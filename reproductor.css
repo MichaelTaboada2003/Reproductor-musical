@@ -1,9 +1,11 @@
+/* Reset */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
+/* General */
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background-color: #121212;
@@ -15,6 +17,7 @@ body {
     padding: 20px;
 }
 
+/* Player Container */
 .player-container {
     background-color: #181818;
     border-radius: 12px;
@@ -24,6 +27,11 @@ body {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
+/* Song Info */
+.song-info {
+    margin-bottom: 24px;
+}
+
 #currentSongTitle {
     font-size: 1.5rem;
     font-weight: bold;
@@ -31,20 +39,17 @@ body {
     color: #fff;
 }
 
-.song-info {
-    margin-bottom: 24px;
-}
-
 .artist-name {
     color: #b3b3b3;
     font-size: 0.9rem;
 }
 
+/* Progress Bar */
 .progress-container {
-    padding: 8px;
     display: flex;
     align-items: center;
     gap: 8px;
+    padding: 8px;
 }
 
 .progress-bar {
@@ -53,10 +58,9 @@ body {
     height: 4px;
     background-color: rgba(255, 255, 255, 0.2);
     border-radius: 2px;
-    cursor: pointer; /* Cambiar cursor para indicar que es interactiva */
+    cursor: pointer;
     transition: background-color 0.2s;
 }
-
 
 .progress {
     position: absolute;
@@ -75,17 +79,16 @@ body {
 .progress:hover:after {
     content: '';
     position: absolute;
-    right: 0; /* Posicionar al final del progreso */
+    right: 0;
     top: 50%;
-    transform: translate(50%, -50%); /* Centrar el círculo */
-    width: 12px; /* Tamaño del círculo */
+    transform: translate(50%, -50%);
+    width: 12px;
     height: 12px;
-    background-color: white; /* Color del círculo */
-    border-radius: 50%; /* Convertir en círculo */
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.2); /* Sombra opcional */
+    background-color: white;
+    border-radius: 50%;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
     transition: transform 0.1s ease-in-out;
 }
-
 
 #currentTime, #duration {
     color: white;
@@ -93,73 +96,38 @@ body {
     width: 40px;
 }
 
-
-.time-info {
-    display: flex;
-    justify-content: space-between;
-    color: #b3b3b3;
-    font-size: 0.8rem;
-    margin-top: 8px;
-}
-
-/* Contenedor principal */
+/* Buttons Container */
 .buttons-container {
-    display: flex;                   /* Flexbox para organizar */
-    align-items: center;             /* Centrar verticalmente */
-    justify-content: space-between;  /* Espacio entre los controles y el volumen */
-    margin: 24px 0;
-  }
-  
-/* Contenedor principal */
-.buttons-container {
-    position: relative;               /* Permite posicionar elementos hijos */
-    display: flex;
-    align-items: center;              /* Centrar elementos verticalmente */
-    justify-content: space-between;   /* Mantiene el control de volumen a la derecha */
-    height: 60px;                     /* Ajusta el alto según tu diseño */
-  }
-  
- /* Contenedor principal */
-.buttons-container {
-    position: relative;               /* Permite centrar los controles y posicionar el volumen */
-    display: flex;
-    align-items: center;              /* Centrar verticalmente los elementos */
-    justify-content: space-between;   /* Mantiene el control de volumen a la derecha */
-    height: 60px;                     /* Ajusta según tu diseño */
-    padding: 0 16px;                  /* Espaciado lateral opcional */
-  }
-  
-  /* Botones de controles */
-  .controls {
-    position: absolute;               /* Permite centrar los botones */
-    left: 50%;                        /* Mueve el contenedor al centro horizontal */
-    transform: translateX(-50%);      /* Ajusta el punto de referencia para centrar */
     display: flex;
     align-items: center;
-    gap: 20px;                        /* Espacio entre los botones */
-  }
-  
-  .controls button {
+    justify-content: space-between;
+    height: 60px;
+    padding: 0 16px;
+    margin: 24px 0;
+}
+
+/* Control Buttons */
+.controls {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.controls button {
     background: transparent;
     border: none;
     color: #b3b3b3;
     cursor: pointer;
-    transition: all 0.2s;
-  }
-  
-  .controls button:hover {
-    color: #fff;
-  }
-  
-  /* Control de volumen */
-  .volume-container {
-    display: flex;
-    align-items: center;             /* Alinear verticalmente */
-    gap: 8px;                        /* Espacio entre el icono de volumen y el slider */
-    margin-left: auto;               /* Empuja el control de volumen hacia la derecha */
-  }
+    transition: all 0.2s ease-in-out;
+}
 
-  
+.controls button:hover {
+    color: #fff;
+}
+
 .play-pause {
     background-color: #1ed760 !important;
     width: 56px;
@@ -176,22 +144,68 @@ body {
     background-color: #1fdf64 !important;
 }
 
-/* Estilizar el reproductor de audio nativo */
-audio {
-    width: 100%;
-    margin: 20px 0;
+/* Volume Container */
+.volume-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
 }
 
-audio::-webkit-media-controls-panel {
-    background-color: #282828;
+/* Volume Slider */
+.volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100px;
+    height: 4px;
+    background: linear-gradient(
+        to right, 
+        #a9a9a9 0%, 
+        #a9a9a9 var(--value, 50%), 
+        rgba(255, 255, 255, 0.2) var(--value, 50%), 
+        rgba(255, 255, 255, 0.2) 100%
+    );
+    border-radius: 2px;
+    cursor: pointer;
+    outline: none;
+    transition: background 0.2s ease-in-out;
 }
 
-audio::-webkit-media-controls-current-time-display,
-audio::-webkit-media-controls-time-remaining-display {
-    color: #fff;
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background-color: white;
+    border-radius: 50%;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
 }
 
-/* Lista de canciones */
+.volume-slider:hover {
+    background: linear-gradient(
+        to right, 
+        #1ed760 0%, 
+        #1ed760 var(--value, 50%), 
+        rgba(255, 255, 255, 0.2) var(--value, 50%), 
+        rgba(255, 255, 255, 0.2) 100%
+    );
+}
+
+.volume-slider:hover::-webkit-slider-thumb {
+    opacity: 1;
+}
+
+.volume-container svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: #ffffff;
+    stroke-width: 1;
+}
+
+/* Playlist */
 .playlist {
     margin-top: 24px;
     border-top: 1px solid #282828;
@@ -205,7 +219,7 @@ audio::-webkit-media-controls-time-remaining-display {
     padding: 12px;
     border-radius: 4px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color 0.2s ease-in-out;
 }
 
 .song-item:hover {
@@ -235,41 +249,4 @@ audio::-webkit-media-controls-time-remaining-display {
 .song-duration {
     color: #b3b3b3;
     font-size: 0.8rem;
-}
-
-/* Botones de control */
-.control-button {
-    font-size: 24px;
-    padding: 8px;
-}
-
-/* Volumen */
-.volume-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 16px;
-}
-
-.volume-slider {
-    flex: 1;
-    -webkit-appearance: none;
-    height: 4px;
-    border-radius: 2px;
-    background: #535353;
-    outline: none;
-}
-
-.volume-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #fff;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.volume-slider::-webkit-slider-thumb:hover {
-    transform: scale(1.2);
 }
