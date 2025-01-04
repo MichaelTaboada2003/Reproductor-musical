@@ -1,0 +1,275 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #121212;
+    color: white;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.player-container {
+    background-color: #181818;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 600px;
+    padding: 24px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+#currentSongTitle {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #fff;
+}
+
+.song-info {
+    margin-bottom: 24px;
+}
+
+.artist-name {
+    color: #b3b3b3;
+    font-size: 0.9rem;
+}
+
+.progress-container {
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.progress-bar {
+    position: relative;
+    flex: 1;
+    height: 4px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    cursor: pointer; /* Cambiar cursor para indicar que es interactiva */
+    transition: background-color 0.2s;
+}
+
+
+.progress {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 20%;
+    background-color: white;
+    border-radius: 2px;
+}
+
+.progress:hover {
+    background-color: #1ed760;
+}
+
+.progress:hover:after {
+    content: '';
+    position: absolute;
+    right: 0; /* Posicionar al final del progreso */
+    top: 50%;
+    transform: translate(50%, -50%); /* Centrar el círculo */
+    width: 12px; /* Tamaño del círculo */
+    height: 12px;
+    background-color: white; /* Color del círculo */
+    border-radius: 50%; /* Convertir en círculo */
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.2); /* Sombra opcional */
+    transition: transform 0.1s ease-in-out;
+}
+
+
+#currentTime, #duration {
+    color: white;
+    font-size: 14px;
+    width: 40px;
+}
+
+
+.time-info {
+    display: flex;
+    justify-content: space-between;
+    color: #b3b3b3;
+    font-size: 0.8rem;
+    margin-top: 8px;
+}
+
+/* Contenedor principal */
+.buttons-container {
+    display: flex;                   /* Flexbox para organizar */
+    align-items: center;             /* Centrar verticalmente */
+    justify-content: space-between;  /* Espacio entre los controles y el volumen */
+    margin: 24px 0;
+  }
+  
+/* Contenedor principal */
+.buttons-container {
+    position: relative;               /* Permite posicionar elementos hijos */
+    display: flex;
+    align-items: center;              /* Centrar elementos verticalmente */
+    justify-content: space-between;   /* Mantiene el control de volumen a la derecha */
+    height: 60px;                     /* Ajusta el alto según tu diseño */
+  }
+  
+ /* Contenedor principal */
+.buttons-container {
+    position: relative;               /* Permite centrar los controles y posicionar el volumen */
+    display: flex;
+    align-items: center;              /* Centrar verticalmente los elementos */
+    justify-content: space-between;   /* Mantiene el control de volumen a la derecha */
+    height: 60px;                     /* Ajusta según tu diseño */
+    padding: 0 16px;                  /* Espaciado lateral opcional */
+  }
+  
+  /* Botones de controles */
+  .controls {
+    position: absolute;               /* Permite centrar los botones */
+    left: 50%;                        /* Mueve el contenedor al centro horizontal */
+    transform: translateX(-50%);      /* Ajusta el punto de referencia para centrar */
+    display: flex;
+    align-items: center;
+    gap: 20px;                        /* Espacio entre los botones */
+  }
+  
+  .controls button {
+    background: transparent;
+    border: none;
+    color: #b3b3b3;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .controls button:hover {
+    color: #fff;
+  }
+  
+  /* Control de volumen */
+  .volume-container {
+    display: flex;
+    align-items: center;             /* Alinear verticalmente */
+    gap: 8px;                        /* Espacio entre el icono de volumen y el slider */
+    margin-left: auto;               /* Empuja el control de volumen hacia la derecha */
+  }
+
+  
+.play-pause {
+    background-color: #1ed760 !important;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #000 !important;
+}
+
+.play-pause:hover {
+    transform: scale(1.1);
+    background-color: #1fdf64 !important;
+}
+
+/* Estilizar el reproductor de audio nativo */
+audio {
+    width: 100%;
+    margin: 20px 0;
+}
+
+audio::-webkit-media-controls-panel {
+    background-color: #282828;
+}
+
+audio::-webkit-media-controls-current-time-display,
+audio::-webkit-media-controls-time-remaining-display {
+    color: #fff;
+}
+
+/* Lista de canciones */
+.playlist {
+    margin-top: 24px;
+    border-top: 1px solid #282828;
+    padding-top: 24px;
+}
+
+.song-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.song-item:hover {
+    background-color: #282828;
+}
+
+.song-item.active {
+    background-color: #282828;
+    color: #1ed760;
+}
+
+.song-item .song-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.song-item .song-title {
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+}
+
+.song-item .song-artist {
+    font-size: 0.8rem;
+    color: #b3b3b3;
+}
+
+.song-duration {
+    color: #b3b3b3;
+    font-size: 0.8rem;
+}
+
+/* Botones de control */
+.control-button {
+    font-size: 24px;
+    padding: 8px;
+}
+
+/* Volumen */
+.volume-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.volume-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: #535353;
+    outline: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}

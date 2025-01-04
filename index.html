@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <link rel="stylesheet" href="/style.css">
+  <title>Mis Canciones</title>
+</head>
+<body>
+
+<nav class="home">
+  <li><a href="/reproductor.html">Reproductor musical</a></li>
+</nav>
+
+<h1>Biblioteca de canciones</h1>
+
+
+<div id="lista-canciones"></div>
+
+<script>
+async function obtenerCanciones() {
+  try {
+    // Llamamos al endpoint de FastAPI para obtener la lista de canciones
+    const respuesta = await fetch("http://127.0.0.1:8000/lista_canciones");
+    const data = await respuesta.json();
+    
+    const contenedor = document.getElementById("lista-canciones");
+
+    // Limpiamos el contenedor (por si se llama varias veces)
+    contenedor.innerHTML = "";
+
+    // Creamos un elemento audio para cada archivo
+    data.canciones.forEach(nombreCancion => {
+      const rutaAudio = `http://127.0.0.1:8000/canciones/${encodeURIComponent(nombreCancion)}`;
+
+      // Contenedor del audio
+      const divAudio = document.createElement("div");
+      divAudio.style.marginBottom = "20px";
+      
+      // Título
+      const titulo = document.createElement("p");
+      const tituloCancion = nombreCancion.replace(/\.webm$/i, '');
+
+      // Asignar como texto visible el nombre sin extensión.
+      titulo.textContent = tituloCancion;
+      // Elemento audio
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.src = rutaAudio;
+
+      divAudio.appendChild(titulo);
+      divAudio.appendChild(audio);
+
+      contenedor.appendChild(divAudio);
+    });
+
+  } catch (error) {
+    console.error("Error obteniendo canciones:", error);
+  }
+}
+
+obtenerCanciones();
+</script>
+
+</body>
+
+</html>
