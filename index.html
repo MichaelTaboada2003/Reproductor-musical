@@ -121,7 +121,7 @@ const pauseIcon = `
           return;
       }
   
-      currentSongTitle.textContent = cancion.nombre.replace(/\.webm$/i, '');
+      currentSongTitle.textContent = cancion.nombre.replace(/\.(webm|mp3)$/i, '');
       document.getElementById('currentArtistName').textContent = cancion.artista || 'Desconocido';
   
       const urlCancion = `http://127.0.0.1:8000/canciones/${encodeURIComponent(cancion.nombre)}`;
@@ -129,7 +129,7 @@ const pauseIcon = `
   }
   
 
-    // 3. Renderizar las últimas 3 canciones en la playlist
+    // Renderizar la playlist
     function renderPlaylist() {
       const playlistDiv = document.getElementById('playlistContainer');
       playlistDiv.innerHTML = ''; // Limpia el contenido anterior
@@ -144,7 +144,8 @@ const pauseIcon = `
   
           const songTitle = document.createElement('span');
           songTitle.classList.add('song-title');
-          songTitle.textContent = cancion.nombre.replace(/\.webm$/i, '');
+          songTitle.textContent = cancion.nombre.replace(/\.(webm|mp3)$/i, '');
+          
   
           const songArtist = document.createElement('span');
           songArtist.classList.add('song-artist');
