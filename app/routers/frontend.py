@@ -14,12 +14,19 @@ router = APIRouter(tags=["frontend"])
 
 @router.get("/")
 def index():
+    """Sirve el index inyectando ?v=<mtime> en los assets principales para
+    que el navegador descargue siempre la versión más reciente sin hard-reload.
+    Cubre style.css y el módulo de entrada js/main.js."""
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    for asset in ("app.js", "style.css"):
-        asset_path = STATIC_DIR / asset
-        if asset_path.is_file():
-            version = int(asset_path.stat().st_mtime)
-            html = html.replace(f"/static/{asset}", f"/static/{asset}?v={version}")
+    # Pares (ruta en HTML, ruta en disco)
+    assets = [
+        ("/static/style.css",     STATIC_DIR / "style.css"),
+        ("/static/js/main.js",    STATIC_DIR / "js" / "main.js"),
+    ]
+    for href, disk_path in assets:
+        if disk_path.is_file():
+            version = int(disk_path.stat().st_mtime)
+            html = html.replace(href, f"{href}?v={version}")
     return HTMLResponse(
         html,
         headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
