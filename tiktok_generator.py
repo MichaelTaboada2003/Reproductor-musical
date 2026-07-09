@@ -1,36 +1,49 @@
 """
 tiktok_generator.py
 =======================
-Genera un video vertical (estilo TikTok/Reels) usando un diseño
-premium con Glassmorphism, Kinetic Typography y un visualizador de 
-espectro de audio real usando NumPy FFT.
+Genera un video vertical (estilo TikTok/Reels) que REPLICA el aspecto de
+ejecutar el karaoke en la terminal (lyrics.py): dibuja una ventana de
+terminal (barra de título con los tres puntos, fondo oscuro, fuente
+monoespaciada) y va revelando la letra palabra por palabra en cian, con un
+cursor de bloque parpadeante, igual que la vista de consola.
+
+También permite recortar un fragmento del audio (por ejemplo, solo el
+coro) con start_time/end_time en segundos: el video dura únicamente ese
+fragmento, pero el texto sigue perfectamente sincronizado porque los
+tiempos de la letra son absolutos respecto al audio completo.
 """
 
 import argparse
 from pathlib import Path
-import numpy as np
 
 from moviepy import VideoClip, AudioFileClip
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 
 from lyrics_sync import align_lyrics_to_audio
 from audio_downloader import resolve_audio_source
 
 VIDEO_SIZE = (1080, 1920)
-MARGIN_X = 80
+MARGIN_X = 70
 
-# Colores Premium
-COLOR_BG_TOP = (15, 20, 30)
-COLOR_BG_BOTTOM = (5, 5, 10)
-COLOR_TEXT_PRIMARY = (255, 255, 255)
-COLOR_TEXT_SECONDARY = (150, 160, 170)
-COLOR_ACCENT = (30, 215, 96) # Spotify green
-COLOR_ACCENT_GLOW = (50, 255, 120)
+# Paleta estilo terminal / Rich (la que usa lyrics.py en consola).
+COLOR_WINDOW = (13, 17, 23)       # fondo de la "ventana" de terminal
+COLOR_TITLEBAR = (32, 37, 43)     # barra superior de la ventana
+COLOR_TITLEBAR_TEXT = (140, 150, 160)
+COLOR_DOT_RED = (255, 95, 86)
+COLOR_DOT_YELLOW = (255, 189, 46)
+COLOR_DOT_GREEN = (39, 201, 63)
+COLOR_TITLE = (240, 200, 40)      # título de la canción (amarillo, como Rich)
+COLOR_ARTIST = (110, 210, 130)    # artista (verde)
+COLOR_LYRIC = (60, 220, 220)      # letra revelada (cian, "bold cyan" de Rich)
+COLOR_CURSOR = (180, 240, 240)
+COLOR_PROMPT = (100, 200, 130)
 
-_FONT_MONO_BOLD = ["Inter-Bold", "Arial-BoldMT", "Helvetica-Bold", "Menlo-Bold", "DejaVuSans-Bold"]
-_FONT_MONO = ["Inter-Regular", "ArialMT", "Helvetica", "Menlo-Regular", "DejaVuSans"]
+_FONT_MONO_BOLD = ["Menlo-Bold", "DejaVuSansMono-Bold", "Courier New Bold", "CourierNewPS-BoldMT"]
+_FONT_MONO = ["Menlo-Regular", "Menlo", "DejaVuSansMono", "Courier New", "CourierNewPSMT"]
 
 _FONT_CACHE = {}
+
 
 def _load_font(candidates, size):
     key = (tuple(candidates), size)
@@ -48,141 +61,148 @@ def _load_font(candidates, size):
     _FONT_CACHE[key] = font
     return font
 
+
 def _text_width(draw, text, font):
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0]
 
+
 def _fit_lyric_font(draw, stanza, max_width):
+    """Elige el tamaño de fuente más grande (dentro de un rango) con el que
+    la línea más larga de la estrofa cabe en el ancho disponible."""
     longest = max((line["text"] for line in stanza), key=len, default="")
-    for size in range(80, 30, -2):
+    for size in range(60, 26, -2):
         font = _load_font(_FONT_MONO_BOLD, size)
-        if _text_width(draw, longest, font) <= max_width:
+        if _text_width(draw, longest + " ", font) <= max_width:
             return font, size
-    return _load_font(_FONT_MONO_BOLD, 30), 30
+    return _load_font(_FONT_MONO_BOLD, 28), 28
+
 
 def _active_stanza(stanzas, current_time):
+    """Última estrofa cuya primera palabra ya empezó a sonar (mismo criterio
+    que lyrics.py: mantiene la estrofa en pantalla durante los instrumentales
+    en vez de avanzar)."""
     active = None
     for stanza in stanzas:
-        if not stanza: continue
-        if stanza[0]["start"] <= current_time + 0.2: # slight lookahead
+        if not stanza:
+            continue
+        if stanza[0]["start"] <= current_time:
             active = stanza
         else:
             break
     return active
 
-def create_background():
-    img = Image.new("RGB", VIDEO_SIZE)
+
+def _draw_window_chrome(draw, fonts, video_size, subtitle="python lyrics.py"):
+    width, _ = video_size
+    font_bar = fonts["bar"]
+    bar_h = 74
+    draw.rectangle([0, 0, width, bar_h], fill=COLOR_TITLEBAR)
+    # Tres puntos estilo macOS
+    cy = bar_h // 2
+    for idx, color in enumerate((COLOR_DOT_RED, COLOR_DOT_YELLOW, COLOR_DOT_GREEN)):
+        cx = 40 + idx * 40
+        r = 12
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=color)
+    label = f"music-lab — {subtitle}"
+    w = _text_width(draw, label, font_bar)
+    draw.text(((width - w) / 2, (bar_h - font_bar.size) / 2 - 2), label, font=font_bar, fill=COLOR_TITLEBAR_TEXT)
+    return bar_h
+
+
+def make_karaoke_frame(stanzas, current_time, fonts, title=None, artist=None,
+                       video_size=VIDEO_SIZE):
+    width, height = video_size
+    img = Image.new("RGB", video_size, color=COLOR_WINDOW)
     draw = ImageDraw.Draw(img)
-    # Simple gradient
-    for y in range(VIDEO_SIZE[1]):
-        r = int(COLOR_BG_TOP[0] + (COLOR_BG_BOTTOM[0] - COLOR_BG_TOP[0]) * y / VIDEO_SIZE[1])
-        g = int(COLOR_BG_TOP[1] + (COLOR_BG_BOTTOM[1] - COLOR_BG_TOP[1]) * y / VIDEO_SIZE[1])
-        b = int(COLOR_BG_TOP[2] + (COLOR_BG_BOTTOM[2] - COLOR_BG_TOP[2]) * y / VIDEO_SIZE[1])
-        draw.line([(0, y), (VIDEO_SIZE[0], y)], fill=(r, g, b))
-    
-    # Draw some abstract soft blobs
-    draw.ellipse([-200, -200, 600, 600], fill=(30, 80, 100))
-    draw.ellipse([500, 1200, 1400, 2100], fill=(10, 50, 40))
-    return img.filter(ImageFilter.GaussianBlur(150))
 
-def make_karaoke_frame(bg_img, stanzas, current_time, fonts, spectrum_bands, title=None, artist=None):
-    width, height = VIDEO_SIZE
-    # We use RGBA for drawing translucent elements
-    overlay = Image.new("RGBA", VIDEO_SIZE, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
+    _draw_window_chrome(draw, fonts, video_size)
 
-    # 1. Draw Spectrum Visualizer at bottom
-    num_bands = len(spectrum_bands)
-    band_width = (width - 100) / num_bands
-    max_band_h = 300
-    for i, val in enumerate(spectrum_bands):
-        h = min(val * max_band_h * 5, max_band_h) # scale intensity
-        x1 = 50 + i * band_width
-        y1 = height - 50 - h
-        x2 = x1 + band_width * 0.8
-        y2 = height - 50
-        # Gradient color based on intensity and index
-        color = (30 + int(200 * (i/num_bands)), 215, 96, 180)
-        draw.rounded_rectangle([x1, y1, x2, y2], radius=10, fill=color)
-
-    # 2. Draw Header
-    y_header = 150
+    # Encabezado: prompt + título (amarillo) y artista (verde), como lyrics.py.
+    y = 150
     if title:
         font_title = fonts["title"]
-        w = _text_width(draw, title, font_title)
-        draw.text(((width - w) / 2, y_header), title, font=font_title, fill=COLOR_TEXT_PRIMARY)
-        y_header += font_title.size + 20
+        prompt = "> "
+        title_text = title
+        total_w = _text_width(draw, prompt, font_title) + _text_width(draw, title_text, font_title)
+        x = (width - total_w) / 2
+        draw.text((x, y), prompt, font=font_title, fill=COLOR_PROMPT)
+        x += _text_width(draw, prompt, font_title)
+        draw.text((x, y), title_text, font=font_title, fill=COLOR_TITLE)
+        y += font_title.size + 18
     if artist:
         font_artist = fonts["artist"]
-        w = _text_width(draw, artist, font_artist)
-        draw.text(((width - w) / 2, y_header), artist, font=font_artist, fill=COLOR_ACCENT)
+        text = f"por {artist}"
+        w = _text_width(draw, text, font_artist)
+        draw.text(((width - w) / 2, y), text, font=font_artist, fill=COLOR_ARTIST)
 
-    # 3. Draw Lyrics with Glassmorphism Card
     stanza = _active_stanza(stanzas, current_time)
-    if stanza:
-        font_lyric, lyric_size = _fit_lyric_font(draw, stanza, width - 2 * MARGIN_X)
-        line_height = int(lyric_size * 1.5)
-        block_height = len(stanza) * line_height
-        y_cursor = (height - block_height) / 2
+    if not stanza:
+        return np.array(img)
 
-        # Draw Glass Card
-        card_pad = 60
-        card_box = [MARGIN_X - card_pad, y_cursor - card_pad, width - MARGIN_X + card_pad, y_cursor + block_height + card_pad]
-        draw.rounded_rectangle(card_box, radius=30, fill=(20, 20, 20, 160), outline=(255, 255, 255, 30), width=2)
+    # Ajustar tamaño de fuente para que la línea más larga entre en pantalla.
+    font_lyric, lyric_size = _fit_lyric_font(draw, stanza, width - 2 * MARGIN_X)
+    line_height = int(lyric_size * 1.9)
+    n_lines = len(stanza)
+    block_height = n_lines * line_height
+    y_cursor = (height - block_height) / 2 + 40
 
-        space_w = _text_width(draw, " ", font_lyric)
+    space_w = _text_width(draw, " ", font_lyric)
+    cursor_pos = None  # (x, y) donde va el cursor de escritura
 
-        for line in stanza:
-            full_text = line["text"]
-            full_width = _text_width(draw, full_text, font_lyric)
-            x = (width - full_width) / 2
+    for line in stanza:
+        full_text = line["text"]
+        full_width = _text_width(draw, full_text, font_lyric)
+        x_start = (width - full_width) / 2
+        x = x_start
 
-            words = line["words"] or [{"text": full_text, "start": line["start"], "end": line["end"]}]
-            for word in words:
-                wtext = word["text"]
-                w_width = _text_width(draw, wtext, font_lyric)
-                
-                # Kinetic Typography Logic
-                is_past = current_time > word["end"]
-                is_current = word["start"] <= current_time <= word["end"]
-                
-                if is_current:
-                    # Current word: Bright white, slightly scaled (simulated by bold/glow)
-                    draw.text((x, y_cursor), wtext, font=font_lyric, fill=(255, 255, 255, 255))
-                elif is_past:
-                    # Past word: dimmer
-                    draw.text((x, y_cursor), wtext, font=font_lyric, fill=(255, 255, 255, 120))
-                else:
-                    # Future word: much dimmer
-                    draw.text((x, y_cursor), wtext, font=font_lyric, fill=(255, 255, 255, 40))
+        words = line["words"] or [{"text": full_text, "start": line["start"], "end": line["end"]}]
+        for word in words:
+            wtext = word["text"]
+            w_width = _text_width(draw, wtext, font_lyric)
+            # Se dibuja solo si el audio ya llegó a esa palabra (revelado
+            # progresivo idéntico al de la terminal). Las que aún no suenan
+            # no se dibujan, pero el cursor avanza para mantener el centrado.
+            if current_time >= word["start"]:
+                draw.text((x, y_cursor), wtext, font=font_lyric, fill=COLOR_LYRIC)
+                cursor_pos = (x + w_width + 4, y_cursor)
+            x += w_width + space_w
+        y_cursor += line_height
 
-                x += w_width + space_w
-            y_cursor += line_height
+    # Cursor de bloque parpadeante (0.4s encendido / 0.4s apagado).
+    if cursor_pos and int(current_time / 0.4) % 2 == 0:
+        cx, cy = cursor_pos
+        block_w = int(lyric_size * 0.55)
+        block_h = int(lyric_size * 1.05)
+        draw.rectangle([cx, cy + 6, cx + block_w, cy + 6 + block_h], fill=COLOR_CURSOR)
 
-    # Composite
-    final_img = bg_img.copy()
-    final_img.paste(overlay, (0, 0), overlay)
-    return np.array(final_img)
+    return np.array(img)
+
 
 def _build_fonts():
     return {
-        "title": _load_font(_FONT_MONO_BOLD, 60),
-        "artist": _load_font(_FONT_MONO, 40),
+        "bar": _load_font(_FONT_MONO, 26),
+        "title": _load_font(_FONT_MONO_BOLD, 52),
+        "artist": _load_font(_FONT_MONO, 36),
     }
+
 
 def create_tiktok_video(audio_source, lyrics_path, output_path, language="es",
                          model="small", force_sync=False, start_time=None,
                          end_time=None, title=None, artist=None,
                          vad="auditok", separate_vocals=True):
+    # 1. Resolver el audio (si es URL, se descarga primero como mp3).
     audio_path = resolve_audio_source(audio_source, output_dir=Path(lyrics_path).parent)
+
+    # 2. Alinear la letra real del .txt con el tiempo real del audio.
     data = align_lyrics_to_audio(
         str(audio_path), lyrics_path, language=language, model_name=model, force=force_sync,
         vad=vad, separate_vocals=separate_vocals,
     )
     stanzas = data["stanzas"]
     fonts = _build_fonts()
-    bg_img = create_background()
 
+    # 3. Cargar audio y resolver el fragmento a exportar (por defecto, todo).
     audio_clip = AudioFileClip(str(audio_path))
     full_duration = audio_clip.duration
 
@@ -194,39 +214,24 @@ def create_tiktok_video(audio_source, lyrics_path, output_path, language="es",
     trimmed_audio = audio_clip.subclipped(frag_start, frag_end)
     duration = frag_end - frag_start
 
-    print(f"Pre-procesando audio para el visualizador FFT...")
-    # Extract audio array for FFT (mono)
-    audio_array = trimmed_audio.to_soundarray(fps=22050)
-    if audio_array.ndim == 2:
-        audio_array = audio_array.mean(axis=1)
+    print(f"Generando video ({frag_start:.1f}s - {frag_end:.1f}s de {full_duration:.1f}s totales)...")
 
-    def get_spectrum(t):
-        idx = int((t - frag_start) * 22050)
-        window_size = 1024
-        window = audio_array[max(0, idx - window_size) : idx + window_size]
-        if len(window) == 0:
-            return np.zeros(32)
-        window = window * np.hamming(len(window))
-        fft = np.abs(np.fft.rfft(window))
-        # downsample to 32 bands
-        bands = np.array_split(fft, 32)
-        return np.array([np.mean(b) for b in bands])
-
-    print(f"Generando video premium ({frag_start:.1f}s - {frag_end:.1f}s de {full_duration:.1f}s totales)...")
-
+    # 4. Cada frame usa el tiempo ABSOLUTO respecto al audio original, para
+    #    que la letra siga sincronizada aunque exportemos solo un fragmento.
     def make_frame(t):
-        spectrum = get_spectrum(t + frag_start)
-        return make_karaoke_frame(bg_img, stanzas, t + frag_start, fonts, spectrum, title=title, artist=artist)
+        return make_karaoke_frame(stanzas, t + frag_start, fonts, title=title, artist=artist)
 
     video_clip = VideoClip(make_frame, duration=duration)
     video_clip = video_clip.with_audio(trimmed_audio)
 
+    # 5. Escribir archivo final.
     print(f"Exportando {output_path}...")
     video_clip.write_videofile(str(output_path), fps=24, codec="libx264", audio_codec="aac")
     print("¡Video generado exitosamente!")
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generador automático de TikToks Premium (Glassmorphism & FFT)")
+    parser = argparse.ArgumentParser(description="Generador automático de TikToks de canciones (estética terminal)")
     parser.add_argument("audio", help="Ruta local o URL (YouTube, etc.) del audio (mp3, wav)")
     parser.add_argument("letra", help="Ruta al archivo .txt con la letra real de la canción")
     parser.add_argument("-o", "--output", help="Ruta de salida del video mp4", default="tiktok_output.mp4")
