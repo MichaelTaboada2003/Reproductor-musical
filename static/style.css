@@ -686,25 +686,143 @@ h2 {
   background: var(--border);
 }
 
-/* Fila del fragmento: dos inputs numéricos + botón Previsualizar en línea. */
+/* Fila del fragmento: dos inputs numéricos (Inicio / Fin) al mismo ancho. */
 .frag-row {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr;
   gap: 14px;
   align-items: end;
   margin-top: 10px;
 }
 
-.frag-row > button {
-  margin-top: 0;
-  height: fit-content;
-  align-self: end;
-  padding: 11px 18px;
-}
-
 #fragPreviewAudio {
   width: 100%;
   margin-top: 12px;
+}
+
+/* Fila de acciones del fragmento: dos botones ghost lado a lado. */
+.frag-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+/* Vista previa estilo terminal: replica exactamente lo que exporta el
+   generador de video (tiktok_generator.py). Paleta idéntica al render:
+   fondo #0d1117, barra #20252b, dots macOS, título amarillo, artista
+   verde, letra cian bold monoespaciada, cursor de bloque parpadeante. */
+.term-stage {
+  margin-top: 14px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  border: 1px solid #000;
+  font-family: "Menlo", "SF Mono", "DejaVu Sans Mono", "Courier New", monospace;
+}
+
+.term-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #20252b;
+}
+
+.term-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.term-dot-red    { background: #ff5f56; }
+.term-dot-yellow { background: #ffbd2e; }
+.term-dot-green  { background: #27c93f; }
+
+.term-label {
+  flex: 1;
+  text-align: center;
+  color: #8c96a0;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 8px;
+}
+
+.term-close {
+  background: transparent;
+  border: none;
+  color: #8c96a0;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 6px;
+}
+.term-close:hover { color: #fff; }
+
+.term-body {
+  background: #0d1117;
+  padding: 30px 28px 40px;
+  min-height: 260px;
+}
+
+.term-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.term-prompt { color: #64c882; font-weight: 700; }
+
+.term-title {
+  color: #f0c828;
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: 0.01em;
+}
+
+.term-artist {
+  color: #6ed282;
+  font-size: 0.85rem;
+  margin-top: 6px;
+  font-weight: 400;
+}
+
+.term-lyrics {
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.35rem;
+  line-height: 2;
+  color: transparent;
+  min-height: 120px;
+}
+
+.term-line {
+  display: block;
+}
+
+/* Cada palabra empieza invisible; al revelarse aparece en cian bold. */
+.term-word {
+  color: transparent;
+  transition: color 0.06s ease;
+}
+
+.term-word.revealed {
+  color: #3cdcdc;
+}
+
+/* Cursor de bloque parpadeante al final de la última palabra revelada.
+   step-end para que el parpadeo sea instantáneo (como una terminal real,
+   no un fade). */
+.term-cursor {
+  color: #b4f0f0;
+  margin-left: 2px;
+  animation: term-blink 0.8s step-end infinite;
+}
+
+@keyframes term-blink {
+  0%, 50%   { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
 }
 
 /* Status dentro de una step-card, para no dejarlo suelto abajo. */
@@ -772,14 +890,8 @@ h2 {
   100% { transform: translateX(300%); }
 }
 
-@media (max-width: 620px) {
-  .frag-row {
-    grid-template-columns: 1fr 1fr;
-  }
-  .frag-row > button {
-    grid-column: 1 / -1;
-  }
-}
+/* La regla móvil ya no hace falta: .frag-row es 1fr 1fr por defecto y
+   .frag-actions es flex-wrap, así que se apila solo en pantallas pequeñas. */
 
 /* ---------- Pestañas (Estudio) ---------- */
 .tabs {

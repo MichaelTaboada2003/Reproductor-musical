@@ -21,8 +21,15 @@ const fragStartInput = document.getElementById("fragStart");
 const fragEndInput = document.getElementById("fragEnd");
 const fragPreviewBtn = document.getElementById("fragPreviewBtn");
 const fragPreviewAudio = document.getElementById("fragPreviewAudio");
+const fragPreviewStage = document.getElementById("fragPreviewStage");
+const fragPreviewLyrics = document.getElementById("fragPreviewLyrics");
+const fragPreviewClose = document.getElementById("fragPreviewClose");
+const fragPreviewLabel = document.getElementById("fragPreviewLabel");
+const fragPreviewTitle = document.getElementById("fragPreviewTitle");
+const fragPreviewArtist = document.getElementById("fragPreviewArtist");
 
 let videoStanzas = null;
+let fragPreviewRAF = null;
 
 // ---- Opciones compartidas de sincronización --------------------------------
 
@@ -132,22 +139,57 @@ function renderStanzaPicker(stanzas) {
   });
 }
 
-// ---- Preview de fragmento ---------------------------------------------------
+// ---- Vista previa del fragmento: replica el look de terminal del video ----
+// El botón "Previsualizar" reproduce el fragmento con la letra revelada
+// palabra a palabra dentro de una "ventana de terminal" (misma estética
+// que tiktok_generator.py). No hace falta un botón "Escuchar" aparte
+// porque la vista previa ya trae audio.
 
 let fragStopHandler = null;
 
-fragPreviewBtn.addEventListener("click", () => {
+fragPreviewBtn.addEventListener("click", async () => {
   const stem = studioSongSelect.value;
   if (!stem) return;
   const song = canciones.find((c) => c.stem === stem);
   if (!song) return;
 
+  // Necesitamos la sincronización para saber cuándo revelar cada palabra.
+  let stanzas = videoStanzas;
+  if (!stanzas) {
+    try {
+      const cached = await apiGet(`/api/karaoke/${encodeURIComponent(stem)}`);
+      if (cached.existe) {
+        stanzas = cached.datos.stanzas;
+        videoStanzas = stanzas;
+      }
+    } catch {}
+  }
+  if (!stanzas) {
+    setStatus(
+      videoStatus,
+      "Necesitas sincronizar la canción antes de ver la vista previa.",
+      "error"
+    );
+    return;
+  }
+
   const start = parseFloat(fragStartInput.value) || 0;
   const end = fragEndInput.value ? parseFloat(fragEndInput.value) : null;
 
-  fragPreviewAudio.hidden = false;
-  fragPreviewAudio.src = `/canciones/${encodeURIComponent(song.nombre)}`;
+  // Rellenar cabecera de la terminal con título/artista del formulario.
+  const titulo = document.getElementById("videoTitulo").value.trim() || stem;
+  const artista = document.getElementById("videoArtista").value.trim();
+  fragPreviewTitle.textContent = titulo;
+  fragPreviewArtist.textContent = artista ? `por ${artista}` : "";
+  fragPreviewLabel.textContent =
+    `music-lab — vista previa (${formatSeconds(start)} — ${end !== null ? formatSeconds(end) : "fin"})`;
 
+  _renderTerminalLyrics(stanzas);
+  fragPreviewStage.hidden = false;
+
+  // Audio: recargamos, buscamos al start y reproducimos. Sin controles
+  // visibles porque el foco está en la terminal.
+  fragPreviewAudio.src = `/canciones/${encodeURIComponent(song.nombre)}`;
   if (fragStopHandler)
     fragPreviewAudio.removeEventListener("timeupdate", fragStopHandler);
   fragStopHandler = () => {
@@ -156,20 +198,123 @@ fragPreviewBtn.addEventListener("click", () => {
   };
   fragPreviewAudio.addEventListener("timeupdate", fragStopHandler);
 
-  fragPreviewAudio.addEventListener(
-    "loadedmetadata",
-    () => {
-      fragPreviewAudio.currentTime = start;
-      fragPreviewAudio.play();
-    },
-    { once: true }
-  );
+  fragPreviewAudio.addEventListener("play",  _startFragLoop);
+  fragPreviewAudio.addEventListener("pause", _stopFragLoop);
+  fragPreviewAudio.addEventListener("ended", _stopFragLoop);
 
-  if (fragPreviewAudio.readyState >= 1) {
+  const seekAndPlay = () => {
     fragPreviewAudio.currentTime = start;
     fragPreviewAudio.play();
-  }
+  };
+  if (fragPreviewAudio.readyState >= 1) seekAndPlay();
+  else fragPreviewAudio.addEventListener("loadedmetadata", seekAndPlay, { once: true });
 });
+
+fragPreviewClose.addEventListener("click", () => {
+  fragPreviewStage.hidden = true;
+  fragPreviewAudio.pause();
+  _stopFragLoop();
+});
+
+// ---- Renderizado tipo terminal ----------------------------------------------
+// Cada palabra empieza como .term-word (invisible). En cada frame marcamos
+// como .revealed las que ya empezaron, y movemos el cursor tras la última.
+// Solo mostramos la estrofa activa en cada momento — igual que el generador
+// de video, que solo dibuja la estrofa cuya primera palabra ya sonó.
+
+const _fragState = { stanzas: null, activeStanza: null };
+
+function _renderTerminalLyrics(stanzas) {
+  _fragState.stanzas = stanzas;
+  _fragState.activeStanza = null;
+  fragPreviewLyrics.innerHTML = "";
+}
+
+function _buildStanzaDom(stanza) {
+  fragPreviewLyrics.innerHTML = "";
+  stanza.forEach((line) => {
+    const l = document.createElement("div");
+    l.className = "term-line";
+    const words = line.words && line.words.length
+      ? line.words
+      : [{ text: line.text, start: line.start, end: line.end }];
+    words.forEach((w, i) => {
+      const sp = document.createElement("span");
+      sp.className = "term-word";
+      sp.textContent = w.text;
+      sp.dataset.start = w.start;
+      l.appendChild(sp);
+      if (i < words.length - 1) l.appendChild(document.createTextNode(" "));
+    });
+    fragPreviewLyrics.appendChild(l);
+  });
+  // Cursor único (se mueve tras la última palabra revelada en cada tick).
+  const cursor = document.createElement("span");
+  cursor.className = "term-cursor";
+  cursor.textContent = "█";
+  fragPreviewLyrics.appendChild(cursor);
+}
+
+function _updateFragTerminal() {
+  const stanzas = _fragState.stanzas;
+  if (!stanzas) return;
+  const t = fragPreviewAudio.currentTime;
+
+  // Encontrar la estrofa activa: la última cuya primera palabra ya empezó.
+  let active = null;
+  for (const stanza of stanzas) {
+    if (!stanza.length) continue;
+    if (stanza[0].start <= t) active = stanza;
+    else break;
+  }
+  if (!active) active = stanzas.find((s) => s.length) || null;
+  if (!active) return;
+
+  if (active !== _fragState.activeStanza) {
+    _fragState.activeStanza = active;
+    _buildStanzaDom(active);
+  }
+
+  // Marcar palabras reveladas y mover el cursor.
+  const words = fragPreviewLyrics.querySelectorAll(".term-word");
+  let lastRevealed = null;
+  words.forEach((w) => {
+    const start = parseFloat(w.dataset.start);
+    if (t >= start) {
+      w.classList.add("revealed");
+      lastRevealed = w;
+    } else {
+      w.classList.remove("revealed");
+    }
+  });
+
+  const cursor = fragPreviewLyrics.querySelector(".term-cursor");
+  if (cursor) {
+    if (lastRevealed) {
+      lastRevealed.after(cursor);
+    } else {
+      // Ninguna palabra aún: cursor al inicio de la primera línea.
+      const first = fragPreviewLyrics.querySelector(".term-line");
+      if (first) first.insertBefore(cursor, first.firstChild);
+    }
+  }
+}
+
+function _startFragLoop() {
+  if (fragPreviewRAF) return;
+  const step = () => {
+    _updateFragTerminal();
+    fragPreviewRAF = requestAnimationFrame(step);
+  };
+  step();
+}
+
+function _stopFragLoop() {
+  if (fragPreviewRAF) {
+    cancelAnimationFrame(fragPreviewRAF);
+    fragPreviewRAF = null;
+  }
+}
 
 // ---- Generación de video ----------------------------------------------------
 

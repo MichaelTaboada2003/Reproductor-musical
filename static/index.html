@@ -238,10 +238,34 @@
               <label>Fin (s)</label>
               <input type="number" id="fragEnd" step="0.1" min="0" placeholder="duración completa" />
             </div>
+          </div>
+
+          <div class="frag-actions">
             <button id="fragPreviewBtn" type="button" class="btn-ghost">Previsualizar</button>
           </div>
 
-          <audio id="fragPreviewAudio" controls hidden></audio>
+          <audio id="fragPreviewAudio" hidden></audio>
+
+          <!-- Vista previa: replica el look de terminal del video final.
+               Ventana con barra de título macOS, prompt verde, título amarillo,
+               letra cian monoespaciada revelada palabra a palabra, cursor parpadeante. -->
+          <div class="term-stage" id="fragPreviewStage" hidden>
+            <div class="term-titlebar">
+              <span class="term-dot term-dot-red"></span>
+              <span class="term-dot term-dot-yellow"></span>
+              <span class="term-dot term-dot-green"></span>
+              <span class="term-label" id="fragPreviewLabel">music-lab — python lyrics.py</span>
+              <button class="term-close" id="fragPreviewClose" title="Cerrar">×</button>
+            </div>
+            <div class="term-body">
+              <div class="term-header">
+                <span class="term-prompt">&gt;</span>
+                <span class="term-title" id="fragPreviewTitle"></span>
+                <div class="term-artist" id="fragPreviewArtist"></div>
+              </div>
+              <div class="term-lyrics" id="fragPreviewLyrics"></div>
+            </div>
+          </div>
 
           <button id="videoGenerateBtn">Generar video</button>
           <div class="job-progress" id="videoProgress" hidden>
