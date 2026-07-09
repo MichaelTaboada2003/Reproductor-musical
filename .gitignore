@@ -1,3 +1,8 @@
 /canciones
-/pycache
-/env
+/videos
+/vocals
+__pycache__/
+*.pyc
+/venv
+*.sync.json
+/letras
