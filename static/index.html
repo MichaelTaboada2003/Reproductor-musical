@@ -31,7 +31,7 @@
         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:middle; margin-top:-2px"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg> Descubrir
       </button>
       <button class="nav-item" data-view="studio">
-        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:middle; margin-top:-2px"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg> Karaoke y Video
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:middle; margin-top:-2px"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg> Video
       </button>
     </nav>
 
@@ -110,11 +110,11 @@
         <div id="lyricsStatus" class="status-box"></div>
       </section>
 
-      <!-- ============ VISTA: ESTUDIO (Karaoke + Video) ============ -->
+      <!-- ============ VISTA: VIDEO ============ -->
       <section class="view" id="view-studio">
-        <h1>Video TikTok</h1>
+        <h1>Generador de Video</h1>
         <p class="hint">
-          Descarga canciones, sincroniza la letra y expórtala como video vertical
+          Sincroniza la letra de una canción y expórtala como video vertical
           estilo TikTok. La letra que sincronices aquí también aparece en el Reproductor.
         </p>
 
@@ -134,7 +134,16 @@
           <div id="downloadStatus" class="status-box"></div>
         </details>
 
-        <div class="form-card">
+        <!-- Paso 1: Elegir canción y sincronizar -->
+        <div class="form-card step-card">
+          <div class="step-head">
+            <span class="step-num">1</span>
+            <div>
+              <div class="step-title">Elige la canción</div>
+              <div class="step-sub">Sincroniza su letra con el audio (una sola vez por canción).</div>
+            </div>
+          </div>
+
           <label>Canción (necesita letra guardada)</label>
           <select id="studioSongSelect"></select>
 
@@ -154,30 +163,38 @@
             </div>
           </div>
 
-          <div class="inline-fields">
-            <div class="checkbox-field">
-              <label><input type="checkbox" id="studioSeparate" checked /> Aislar voz (Demucs)</label>
-            </div>
-            <div class="checkbox-field">
-              <label><input type="checkbox" id="studioVad" checked /> Detección de voz (VAD)</label>
-            </div>
-            <div class="checkbox-field">
-              <label><input type="checkbox" id="studioForce" /> Forzar re-sincronización</label>
-            </div>
+          <div class="checkbox-row">
+            <label><input type="checkbox" id="studioSeparate" checked /> Aislar voz (Demucs)</label>
+            <label><input type="checkbox" id="studioVad" checked /> Detección de voz (VAD)</label>
+            <label><input type="checkbox" id="studioForce" /> Forzar re-sincronización</label>
           </div>
 
           <p class="hint">
-            "Aislar voz" + "VAD" dan la mejor sincronía (evitan que la letra avance sobre
-            los instrumentales). La primera vez separa la voz con Demucs y puede tardar
-            un par de minutos; luego queda cacheada y sirve tanto para el karaoke como
-            para el video.
+            "Aislar voz" + "VAD" dan la mejor sincronía. La primera vez, Demucs puede
+            tardar un par de minutos; luego queda cacheada.
           </p>
 
           <button id="studioSyncBtn">Sincronizar</button>
+          <div class="job-progress" id="syncProgress" hidden>
+            <div class="job-progress-head">
+              <span class="job-progress-phase" id="syncProgressPhase"></span>
+              <span class="job-progress-pct" id="syncProgressPct"></span>
+            </div>
+            <div class="job-progress-bar"><div class="job-progress-fill" id="syncProgressFill"></div></div>
+          </div>
+          <div id="studioStatus" class="status-box"></div>
         </div>
-        <div id="studioStatus" class="status-box"></div>
 
-        <div class="form-card">
+        <!-- Paso 2: Detalles del video (metadatos + fragmento) y generación -->
+        <div class="form-card step-card">
+          <div class="step-head">
+            <span class="step-num">2</span>
+            <div>
+              <div class="step-title">Detalles del video</div>
+              <div class="step-sub">Textos que aparecen en pantalla y qué parte de la canción exportar.</div>
+            </div>
+          </div>
+
           <div class="inline-fields">
             <div>
               <label>Título a mostrar</label>
@@ -189,38 +206,43 @@
             </div>
           </div>
 
-          <label>Nombre del video de salida</label>
+          <label>Nombre del archivo de salida</label>
           <input type="text" id="videoOutputName" placeholder="Se usará el nombre de la canción si lo dejas vacío" />
-        </div>
 
-        <div class="form-card" style="margin-top: 20px;">
-          <label>Fragmento a exportar</label>
+          <div class="section-sep">
+            <span>Fragmento a exportar</span>
+          </div>
           <p class="hint">
-            Elige una estrofa (por ejemplo el coro) o ajusta los segundos manualmente.
-            Sincroniza la canción arriba para ver las estrofas disponibles.
+            Elige una estrofa (por ejemplo el coro) o ajusta los segundos a mano.
+            Necesitas sincronizar arriba para ver las estrofas.
           </p>
 
           <div id="stanzaPicker" class="stanza-picker"></div>
 
-          <div class="inline-fields">
+          <div class="frag-row">
             <div>
-              <label>Inicio (segundos)</label>
+              <label>Inicio (s)</label>
               <input type="number" id="fragStart" step="0.1" min="0" placeholder="0" />
             </div>
             <div>
-              <label>Fin (segundos)</label>
+              <label>Fin (s)</label>
               <input type="number" id="fragEnd" step="0.1" min="0" placeholder="duración completa" />
             </div>
-            <div class="checkbox-field">
-              <button id="fragPreviewBtn" type="button">Previsualizar fragmento</button>
-            </div>
+            <button id="fragPreviewBtn" type="button" class="btn-ghost">Previsualizar</button>
           </div>
 
-          <audio id="fragPreviewAudio" controls style="width: 100%; margin-top: 10px;" hidden></audio>
+          <audio id="fragPreviewAudio" controls hidden></audio>
 
           <button id="videoGenerateBtn">Generar video</button>
+          <div class="job-progress" id="videoProgress" hidden>
+            <div class="job-progress-head">
+              <span class="job-progress-phase" id="videoProgressPhase"></span>
+              <span class="job-progress-pct" id="videoProgressPct"></span>
+            </div>
+            <div class="job-progress-bar"><div class="job-progress-fill" id="videoProgressFill"></div></div>
+          </div>
+          <div id="videoStatus" class="status-box"></div>
         </div>
-        <div id="videoStatus" class="status-box"></div>
 
         <h2>Videos generados</h2>
         <div class="video-gallery" id="videoGallery"></div>

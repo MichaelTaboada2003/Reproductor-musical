@@ -431,6 +431,193 @@ h2 {
   margin-top: 0;
 }
 
+/* ---------- Generador de Video: tarjetas por paso ---------- */
+.step-card {
+  max-width: 720px;
+  margin-bottom: 22px;
+  padding: 26px 28px;
+}
+
+.step-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.step-num {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.step-sub {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Fila horizontal de checkboxes (Demucs, VAD, Forzar): en vez de columnas
+   con espacio muerto, todos en una sola línea. */
+.checkbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 22px;
+  margin-top: 16px;
+}
+
+.checkbox-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 0;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Separador de subsección dentro de una step-card (ej. "Fragmento a exportar"
+   dentro de "Detalles del video"). */
+.section-sep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 4px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.section-sep::before,
+.section-sep::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Fila del fragmento: dos inputs numéricos + botón Previsualizar en línea. */
+.frag-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+.frag-row > button {
+  margin-top: 0;
+  height: fit-content;
+  align-self: end;
+  padding: 11px 18px;
+}
+
+#fragPreviewAudio {
+  width: 100%;
+  margin-top: 12px;
+}
+
+/* Status dentro de una step-card, para no dejarlo suelto abajo. */
+.step-card .status-box {
+  margin-top: 14px;
+}
+
+/* Barra de progreso reutilizable para jobs (sync + render de video).
+   - Modo determinado: el fill ocupa un porcentaje real.
+   - Modo indeterminado: cuando el backend no conoce el porcentaje (fases
+     bloqueantes de Demucs/Whisper) mostramos un "marching bar" animado. */
+.job-progress {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.job-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  gap: 12px;
+}
+
+.job-progress-phase {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.job-progress-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.job-progress-bar {
+  position: relative;
+  height: 8px;
+  background: var(--bg-elev-3);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.job-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  border-radius: var(--radius-pill);
+  transition: width 0.35s ease;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* Modo indeterminado: la barra se marcha en bucle. */
+.job-progress.indeterminate .job-progress-fill {
+  width: 40% !important;
+  animation: jobMarch 1.3s ease-in-out infinite;
+  transition: none;
+}
+
+@keyframes jobMarch {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+@media (max-width: 620px) {
+  .frag-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .frag-row > button {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ---------- Pestañas (Estudio) ---------- */
 .tabs {
   display: flex;
