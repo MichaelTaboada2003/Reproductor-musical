@@ -29,11 +29,10 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import urllib.parse
 import base64
-import hashlib
 from pydantic import BaseModel
 
 from audio_downloader import is_url, resolve_audio_source
@@ -120,7 +119,19 @@ def api_job_status(job_id: str):
 
 @app.get("/")
 def index():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    """Sirve el index inyectando un cache buster (?v=<mtime>) a los assets
+    para que los navegadores siempre recojan la última versión de app.js y
+    style.css después de un cambio."""
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    for asset in ("app.js", "style.css"):
+        asset_path = STATIC_DIR / asset
+        if asset_path.is_file():
+            version = int(asset_path.stat().st_mtime)
+            html = html.replace(f"/static/{asset}", f"/static/{asset}?v={version}")
+    return HTMLResponse(
+        html,
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 @app.get("/favicon.ico")
 def favicon():
@@ -356,8 +367,16 @@ def spotify_login():
     if not client_id:
         raise HTTPException(500, "Falta SPOTIFY_CLIENT_ID en .env")
     redirect_uri = "http://127.0.0.1:8000/callback"
-    scope = "user-top-read"
-    url = f"https://accounts.spotify.com/authorize?client_id={client_id}&response_type=code&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}"
+    # user-top-read: top tracks/artists (favoritas y recap).
+    # playlist-read-private: leer playlists privadas del usuario.
+    # playlist-read-collaborative: leer playlists colaborativas.
+    scope = "user-top-read playlist-read-private playlist-read-collaborative"
+    url = (
+        "https://accounts.spotify.com/authorize"
+        f"?client_id={client_id}&response_type=code"
+        f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
+        f"&scope={urllib.parse.quote(scope)}"
+    )
     return RedirectResponse(url)
 
 @app.get("/callback")
@@ -441,39 +460,38 @@ def _spotify_request(endpoint: str, method: str = "GET", body=None):
     except Exception as e:
         raise HTTPException(500, f"Fallo al conectar con Spotify: {str(e)}")
 
+_TIME_RANGES = {"short_term", "medium_term", "long_term"}
+
+
+def _norm_time_range(tr: str) -> str:
+    """Valida y normaliza el parámetro time_range de Spotify."""
+    return tr if tr in _TIME_RANGES else "long_term"
+
+
 @app.get("/api/spotify/top")
-def api_spotify_top(limit: int = 20):
-    return _spotify_request(f"v1/me/top/tracks?time_range=long_term&limit={limit}")
+def api_spotify_top(limit: int = 20, time_range: str = "long_term"):
+    """Top tracks. time_range: short_term (4 semanas) | medium_term (6 meses) | long_term (años)."""
+    tr = _norm_time_range(time_range)
+    return _spotify_request(f"v1/me/top/tracks?time_range={tr}&limit={limit}")
 
-@app.get("/api/spotify/features")
-def api_spotify_features(ids: str):
-    if not ids:
-        return {"audio_features": []}
-    try:
-        return _spotify_request(f"v1/audio-features?ids={ids}")
-    except HTTPException as e:
-        if e.status_code == 403:
-            features = []
-            for track_id in ids.split(","):
-                h = int(hashlib.md5(track_id.encode("utf-8")).hexdigest(), 16)
-                features.append({
-                    "id": track_id,
-                    "energy": (h % 60 + 40) / 100.0,
-                    "danceability": ((h // 100) % 50 + 50) / 100.0
-                })
-            return {"audio_features": features}
-        raise
-
-@app.get("/api/spotify/search")
-def api_spotify_search(q: str, limit: int = 20):
-    if not q:
-        return {"tracks": {"items": []}}
-    return _spotify_request(f"v1/search?q={urllib.parse.quote(q)}&type=track&limit={limit}")
-
-@app.get("/api/spotify/new-releases")
-def api_spotify_new_releases(limit: int = 20):
-    return _spotify_request(f"v1/browse/new-releases?limit={limit}")
 
 @app.get("/api/spotify/top-artists")
-def api_spotify_top_artists():
-    return _spotify_request("v1/me/top/artists?time_range=long_term&limit=10")
+def api_spotify_top_artists(limit: int = 10, time_range: str = "long_term"):
+    tr = _norm_time_range(time_range)
+    return _spotify_request(f"v1/me/top/artists?time_range={tr}&limit={limit}")
+
+
+@app.get("/api/spotify/playlists")
+def api_spotify_playlists(limit: int = 50):
+    """Playlists del usuario (propias y guardadas)."""
+    return _spotify_request(f"v1/me/playlists?limit={limit}")
+
+
+@app.get("/api/spotify/playlist/{playlist_id}/tracks")
+def api_spotify_playlist_tracks(playlist_id: str, limit: int = 100):
+    """Canciones de una playlist. Devolvemos solo los campos necesarios para
+    ahorrar payload y mantener la forma alineada con api_spotify_top."""
+    fields = "items(track(id,name,artists(name),album(images),preview_url))"
+    return _spotify_request(
+        f"v1/playlists/{playlist_id}/tracks?limit={limit}&fields={urllib.parse.quote(fields)}"
+    )

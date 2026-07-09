@@ -1129,3 +1129,106 @@ h2 {
 }
 
 .btn-spotify-login:hover { transform: translateY(-1px); filter: brightness(1.08); }
+
+/* ---- Recap del mes ---- */
+.recap-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  margin-top: 8px;
+}
+
+.recap-section h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin: 0 0 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.recap-artists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 18px;
+}
+
+.recap-artist {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(180deg, var(--bg-elev-1), var(--bg-elev-2));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 14px 18px;
+  text-align: center;
+  transition: transform var(--t-fast), border-color var(--t-fast);
+}
+
+.recap-artist:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+}
+
+.recap-rank {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.02em;
+}
+
+.recap-artist-avatar {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--bg-elev-3);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.recap-artist-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.recap-artist-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ---- Tarjetas de playlist ---- */
+.playlist-card { cursor: pointer; }
+
+.playlist-cover-fallback {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--bg-elev-2), var(--bg-elev-3));
+}
+
+.playlist-crumb {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 4px 0 16px;
+}
+
+.playlist-crumb #playlistCrumbTitle {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}

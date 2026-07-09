@@ -212,7 +212,7 @@
               <input type="number" id="fragEnd" step="0.1" min="0" placeholder="duración completa" />
             </div>
             <div class="checkbox-field">
-              <button id="fragPreviewBtn" type="button">▶ Previsualizar fragmento</button>
+              <button id="fragPreviewBtn" type="button">Previsualizar fragmento</button>
             </div>
           </div>
 
@@ -229,20 +229,35 @@
       <!-- ============ VISTA: DESCUBRIR (Spotify) ============ -->
       <section class="view" id="view-spotify">
         <h1>Descubrir</h1>
-        <p class="hint">Explora Spotify y trae cualquier canción a tu Lab con un clic: luego podrás reproducirla, sincronizar su letra o hacer un video.</p>
+        <p class="hint">Explora tu música de Spotify y trae cualquier canción al Lab con un clic para reproducirla, sincronizar su letra o hacer un video.</p>
 
         <div class="discover-tabs">
-          <button class="discover-tab active" data-src="top">Mis favoritas</button>
-          <button class="discover-tab" data-src="new">Novedades</button>
-          <button class="discover-tab" data-src="search">Buscar</button>
+          <button class="discover-tab active" data-src="recap">Recap del mes</button>
+          <button class="discover-tab" data-src="playlists">Mis playlists</button>
+          <button class="discover-tab" data-src="top">Mis favoritas</button>
         </div>
 
-        <div class="discover-search" id="discoverSearch" hidden>
-          <input type="text" id="discoverSearchInput" placeholder="Busca una canción o artista..." />
-          <button type="button" id="discoverSearchBtn" class="btn-ghost">Buscar</button>
+        <!-- Migas para volver a la lista de playlists -->
+        <div class="playlist-crumb" id="playlistCrumb" hidden>
+          <button type="button" class="btn-ghost" id="playlistBackBtn">← Volver a mis playlists</button>
+          <span id="playlistCrumbTitle"></span>
         </div>
 
         <div id="spotifyStatus" class="status-box"></div>
+
+        <!-- Panel Recap del mes -->
+        <div class="recap-panel" id="recapPanel" hidden>
+          <div class="recap-section">
+            <h2>Tus 5 artistas del mes</h2>
+            <div class="recap-artists" id="recapArtists"></div>
+          </div>
+          <div class="recap-section">
+            <h2>Tus 5 canciones del mes</h2>
+            <div class="spotify-grid" id="recapTracks"></div>
+          </div>
+        </div>
+
+        <!-- Grid unificado: usado para playlists, canciones de una playlist, o favoritas -->
         <div class="spotify-grid" id="spotifyGrid"></div>
       </section>
 

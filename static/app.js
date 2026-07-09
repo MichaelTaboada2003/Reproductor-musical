@@ -9,18 +9,33 @@ const API = ""; // mismo origen, FastAPI sirve tanto la API como los estáticos
 const navItems = document.querySelectorAll(".nav-item");
 const views = document.querySelectorAll(".view");
 
-navItems.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    navItems.forEach((b) => b.classList.remove("active"));
-    views.forEach((v) => v.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById(`view-${btn.dataset.view}`).classList.add("active");
+/** Activa la vista con el data-view indicado (equivalente a hacer clic en el
+    botón del sidebar). Usada por el nav y por el hash de la URL (OAuth). */
+function activateView(view) {
+  const btn = document.querySelector(`.nav-item[data-view="${view}"]`);
+  const section = document.getElementById(`view-${view}`);
+  if (!btn || !section) return false;
+  navItems.forEach((b) => b.classList.remove("active"));
+  views.forEach((v) => v.classList.remove("active"));
+  btn.classList.add("active");
+  section.classList.add("active");
 
-    if (btn.dataset.view === "lyrics") refreshSongSelect(lyricsSongSelect, onLyricsSongChange);
-    if (btn.dataset.view === "studio") { refreshSongSelect(studioSongSelect, onStudioSongChange); loadVideoGallery(); }
-    if (btn.dataset.view === "spotify" && !discoverLoaded) { discoverLoaded = true; loadDiscover("/api/spotify/top"); }
-  });
+  if (view === "lyrics") refreshSongSelect(lyricsSongSelect, onLyricsSongChange);
+  if (view === "studio") { refreshSongSelect(studioSongSelect, onStudioSongChange); loadVideoGallery(); }
+  if (view === "spotify" && !discoverLoaded) { discoverLoaded = true; loadRecap(); }
+  return true;
+}
+
+navItems.forEach((btn) => {
+  btn.addEventListener("click", () => activateView(btn.dataset.view));
 });
+
+/** Si la URL trae #view-<nombre> (ej. tras el OAuth de Spotify), abre esa vista. */
+function activateFromHash() {
+  const m = /^#view-([\w-]+)$/.exec(window.location.hash || "");
+  if (m) activateView(m[1]);
+}
+window.addEventListener("hashchange", activateFromHash);
 
 // ---------- Utilidades ----------
 async function apiGet(path) {
@@ -353,7 +368,7 @@ async function refreshSongSelect(selectEl, onChange) {
     data.canciones.forEach((c) => {
       const opt = document.createElement("option");
       opt.value = c.stem;
-      opt.textContent = c.stem + (c.tiene_letra ? " ✓ letra" : "") + (c.tiene_sync ? " ✓ karaoke" : "");
+      opt.textContent = c.stem + (c.tiene_letra ? " · letra" : "") + (c.tiene_sync ? " · karaoke" : "");
       selectEl.appendChild(opt);
     });
     if (previous && data.canciones.some((c) => c.stem === previous)) {
@@ -759,14 +774,17 @@ async function loadVideoGallery() {
 cargarListaCanciones();
 
 // ============================================================
-// VISTA: Descubrir (Spotify → traer canciones al Lab)
+// VISTA: Descubrir (Spotify → Recap, Playlists, Favoritas)
 // ============================================================
 const spotifyGrid = document.getElementById("spotifyGrid");
 const spotifyStatus = document.getElementById("spotifyStatus");
 const discoverTabs = document.querySelectorAll(".discover-tab");
-const discoverSearch = document.getElementById("discoverSearch");
-const discoverSearchInput = document.getElementById("discoverSearchInput");
-const discoverSearchBtn = document.getElementById("discoverSearchBtn");
+const recapPanel = document.getElementById("recapPanel");
+const recapArtists = document.getElementById("recapArtists");
+const recapTracks = document.getElementById("recapTracks");
+const playlistCrumb = document.getElementById("playlistCrumb");
+const playlistBackBtn = document.getElementById("playlistBackBtn");
+const playlistCrumbTitle = document.getElementById("playlistCrumbTitle");
 let discoverLoaded = false;
 
 let currentAudioPreview = null;
@@ -799,20 +817,6 @@ function playPreview(url, btnElement) {
   };
 }
 
-/** Normaliza la respuesta de Spotify (top / búsqueda / novedades) a una
-    lista uniforme de tracks. */
-function normalizeTracks(res) {
-  if (res.tracks && res.tracks.items) return res.tracks.items;
-  if (res.albums && res.albums.items) {
-    return res.albums.items.map((a) => ({
-      id: a.id, name: a.name, artists: a.artists,
-      album: { images: a.images }, preview_url: null,
-    }));
-  }
-  if (res.items) return res.items;
-  return [];
-}
-
 /** Coincidencia laxa: ¿ya hay una canción parecida en la biblioteca local? */
 function isInLibrary(title) {
   const t = (title || "").trim().toLowerCase();
@@ -829,7 +833,7 @@ async function downloadFromSpotify(btn, title, artists) {
   btn.textContent = "Descargando…";
   try {
     await apiPost("/api/descargar", { url: `ytsearch:${title} ${artists} audio` });
-    btn.textContent = "✓ En tu biblioteca";
+    btn.textContent = "En tu biblioteca";
     btn.classList.add("in-lib");
     cargarListaCanciones();
     refreshSongSelect(studioSongSelect);
@@ -839,18 +843,174 @@ async function downloadFromSpotify(btn, title, artists) {
   }
 }
 
-function renderSpotifyCards(tracks) {
+
+
+function showSpotifyLogin() {
+  spotifyGrid.innerHTML = "";
+  spotifyStatus.className = "status-box";
+  spotifyStatus.innerHTML = `
+    <div class="spotify-login-box">
+      <p>Conecta tu cuenta de Spotify para ver tus favoritas y novedades.</p>
+      <button class="btn-spotify-login" onclick="window.location.href='/api/spotify/login'">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="vertical-align:middle; margin-right:8px; margin-top:-2px"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.468-.077-.334.132-.67.467-.746 3.816-.874 7.058-.496 9.715 1.122.295.18.388.563.207.848zm1.22-3.237c-.226.368-.706.485-1.072.26-2.687-1.65-6.785-2.13-9.965-1.166-.413.125-.845-.108-.97-.52-.125-.413.108-.844.52-.97 3.66-1.11 8.24-.57 11.226 1.264.367.225.485.705.26 1.072zm.106-3.41c-3.21-1.905-8.5-2.08-11.562-1.15-.49.148-.99-.126-1.138-.616-.148-.49.125-.99.615-1.137 3.51-.97 9.38-.767 13.06 1.417.44.26.582.846.32 1.286-.26.44-.847.582-1.295.32z"></path></svg>
+        Iniciar sesión con Spotify
+      </button>
+    </div>`;
+}
+
+/** Oculta todos los paneles de Descubrir para dejar el escenario limpio. */
+function _resetDiscoverPanels() {
+  recapPanel.hidden = true;
+  playlistCrumb.hidden = true;
+  spotifyGrid.innerHTML = "";
+  recapArtists.innerHTML = "";
+  recapTracks.innerHTML = "";
   spotifyStatus.className = "status-box";
   spotifyStatus.textContent = "";
-  if (!tracks || tracks.length === 0) {
-    spotifyGrid.innerHTML = "";
-    setStatus(spotifyStatus, "No se encontraron resultados.");
+}
+
+/** Envuelve una promesa que llama a Spotify y muestra el prompt de login
+    o el error correspondiente cuando la sesión falta o expira. */
+async function _withSpotifyAuth(fn) {
+  try {
+    await fn();
+  } catch (err) {
+    if (/401|iniciado sesión|expirada/i.test(err.message)) {
+      showSpotifyLogin();
+    } else if (/403/i.test(err.message)) {
+      // 403 típicamente = scope insuficiente (playlists añadidas después).
+      spotifyStatus.innerHTML = `
+        <div class="spotify-login-box">
+          <p>Necesitamos permisos adicionales para leer tus playlists. Vuelve a conectar tu cuenta.</p>
+          <button class="btn-spotify-login" onclick="window.location.href='/api/spotify/login'">
+            Reconectar Spotify
+          </button>
+        </div>`;
+    } else {
+      setStatus(spotifyStatus, `Error: ${err.message}`, "error");
+    }
+  }
+}
+
+// ---- Recap del mes ----
+async function loadRecap() {
+  _resetDiscoverPanels();
+  recapPanel.hidden = false;
+  setStatus(spotifyStatus, "Preparando tu recap del mes…");
+  await _withSpotifyAuth(async () => {
+    const [artistsRes, tracksRes] = await Promise.all([
+      apiGet("/api/spotify/top-artists?time_range=short_term&limit=5"),
+      apiGet("/api/spotify/top?time_range=short_term&limit=5"),
+    ]);
+    renderRecapArtists(artistsRes.items || []);
+    renderRecapTracks(tracksRes.items || []);
+    spotifyStatus.textContent = "";
+  });
+}
+
+function renderRecapArtists(artists) {
+  recapArtists.innerHTML = "";
+  if (!artists.length) {
+    recapArtists.innerHTML = `<p class="hint">Aún no hay suficiente historial en Spotify para un recap del mes.</p>`;
     return;
   }
+  artists.forEach((a, i) => {
+    const img = a.images?.[0]?.url || "";
+    const card = document.createElement("div");
+    card.className = "recap-artist";
+    card.innerHTML = `
+      <div class="recap-rank">#${i + 1}</div>
+      <div class="recap-artist-avatar">${img ? `<img src="${img}" alt="">` : ""}</div>
+      <div class="recap-artist-name">${a.name}</div>
+    `;
+    recapArtists.appendChild(card);
+  });
+}
 
+function renderRecapTracks(tracks) {
+  recapTracks.innerHTML = "";
+  if (!tracks.length) {
+    recapTracks.innerHTML = `<p class="hint">Sin canciones destacadas este mes todavía.</p>`;
+    return;
+  }
+  renderCardsInto(recapTracks, tracks);
+}
+
+// ---- Mis playlists ----
+async function loadPlaylists() {
+  _resetDiscoverPanels();
+  setStatus(spotifyStatus, "Cargando tus playlists…");
+  await _withSpotifyAuth(async () => {
+    const res = await apiGet("/api/spotify/playlists?limit=50");
+    const items = res.items || [];
+    if (!items.length) {
+      setStatus(spotifyStatus, "Aún no tienes playlists en Spotify.");
+      return;
+    }
+    spotifyStatus.textContent = "";
+    spotifyGrid.innerHTML = "";
+    items.forEach((pl) => spotifyGrid.appendChild(renderPlaylistCard(pl)));
+  });
+}
+
+function renderPlaylistCard(pl) {
+  const img = pl.images?.[0]?.url || "";
+  const count = pl.tracks?.total ?? 0;
+  const card = document.createElement("div");
+  card.className = "spotify-card playlist-card";
+  card.innerHTML = `
+    <div class="spotify-img-container">
+      ${img ? `<img src="${img}" class="spotify-img" alt="">` : `<div class="playlist-cover-fallback"></div>`}
+    </div>
+    <div class="spotify-title" title="${pl.name}">${pl.name}</div>
+    <div class="spotify-artist">${count} ${count === 1 ? "canción" : "canciones"}</div>
+  `;
+  card.addEventListener("click", () => openPlaylist(pl));
+  return card;
+}
+
+async function openPlaylist(pl) {
+  _resetDiscoverPanels();
+  playlistCrumb.hidden = false;
+  playlistCrumbTitle.textContent = pl.name;
+  setStatus(spotifyStatus, `Cargando canciones de "${pl.name}"…`);
+  await _withSpotifyAuth(async () => {
+    const res = await apiGet(`/api/spotify/playlist/${pl.id}/tracks?limit=100`);
+    // /playlists/{id}/tracks devuelve items[{ track: {...} }]; aplanamos.
+    const tracks = (res.items || [])
+      .map((it) => it.track)
+      .filter((t) => t && t.id);
+    if (!tracks.length) {
+      setStatus(spotifyStatus, "Esta playlist está vacía.");
+      return;
+    }
+    spotifyStatus.textContent = "";
+    renderCardsInto(spotifyGrid, tracks);
+  });
+}
+
+playlistBackBtn.addEventListener("click", loadPlaylists);
+
+// ---- Mis favoritas (top de siempre) ----
+async function loadFavorites() {
+  _resetDiscoverPanels();
+  setStatus(spotifyStatus, "Trayendo tus favoritas de siempre…");
+  await _withSpotifyAuth(async () => {
+    const res = await apiGet("/api/spotify/top?time_range=long_term&limit=20");
+    const tracks = res.items || [];
+    if (!tracks.length) {
+      setStatus(spotifyStatus, "Aún no tienes suficientes escuchas.");
+      return;
+    }
+    spotifyStatus.textContent = "";
+    renderCardsInto(spotifyGrid, tracks);
+  });
+}
+
+/** Pinta tarjetas de tracks en el contenedor indicado. */
+function renderCardsInto(container, tracks) {
+  container.innerHTML = "";
   const playSvg = `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>`;
-
-  spotifyGrid.innerHTML = "";
   tracks.forEach((track) => {
     const imgUrl = track.album?.images?.[0]?.url || "";
     const artists = (track.artists || []).map((a) => a.name).join(", ");
@@ -867,7 +1027,7 @@ function renderSpotifyCards(tracks) {
       </div>
       <div class="spotify-title" title="${title}">${title}</div>
       <div class="spotify-artist" title="${artists}">${artists}</div>
-      <button class="btn-download-spotify${inLib ? " in-lib" : ""}">${inLib ? "✓ En tu biblioteca" : "⬇ Descargar al Lab"}</button>
+      <button class="btn-download-spotify${inLib ? " in-lib" : ""}">${inLib ? "En tu biblioteca" : "Descargar al Lab"}</button>
     `;
 
     const previewBtn = card.querySelector(".spotify-preview-btn");
@@ -879,65 +1039,20 @@ function renderSpotifyCards(tracks) {
     } else {
       btn.addEventListener("click", () => downloadFromSpotify(btn, title, artists));
     }
-
-    spotifyGrid.appendChild(card);
+    container.appendChild(card);
   });
 }
 
-function showSpotifyLogin() {
-  spotifyGrid.innerHTML = "";
-  spotifyStatus.className = "status-box";
-  spotifyStatus.innerHTML = `
-    <div class="spotify-login-box">
-      <p>Conecta tu cuenta de Spotify para ver tus favoritas y novedades.</p>
-      <button class="btn-spotify-login" onclick="window.location.href='/api/spotify/login'">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="vertical-align:middle; margin-right:8px; margin-top:-2px"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.468-.077-.334.132-.67.467-.746 3.816-.874 7.058-.496 9.715 1.122.295.18.388.563.207.848zm1.22-3.237c-.226.368-.706.485-1.072.26-2.687-1.65-6.785-2.13-9.965-1.166-.413.125-.845-.108-.97-.52-.125-.413.108-.844.52-.97 3.66-1.11 8.24-.57 11.226 1.264.367.225.485.705.26 1.072zm.106-3.41c-3.21-1.905-8.5-2.08-11.562-1.15-.49.148-.99-.126-1.138-.616-.148-.49.125-.99.615-1.137 3.51-.97 9.38-.767 13.06 1.417.44.26.582.846.32 1.286-.26.44-.847.582-1.295.32z"></path></svg>
-        Iniciar sesión con Spotify
-      </button>
-    </div>`;
-}
-
-async function loadDiscover(endpoint) {
-  spotifyGrid.innerHTML = "";
-  setStatus(spotifyStatus, "Conectando con Spotify…");
-  try {
-    const res = await apiGet(endpoint);
-    renderSpotifyCards(normalizeTracks(res));
-  } catch (err) {
-    if (/401|iniciado sesión|expirada/i.test(err.message)) {
-      showSpotifyLogin();
-    } else {
-      setStatus(spotifyStatus, `Error: ${err.message}`, "error");
-    }
-  }
-}
-
-// Pestañas de Descubrir: favoritas / novedades / buscar.
+// Cableado de pestañas
 discoverTabs.forEach((tab) => {
   tab.addEventListener("click", () => {
     discoverTabs.forEach((t) => t.classList.remove("active"));
     tab.classList.add("active");
     const src = tab.dataset.src;
-    if (src === "search") {
-      discoverSearch.hidden = false;
-      spotifyGrid.innerHTML = "";
-      spotifyStatus.textContent = "";
-      discoverSearchInput.focus();
-    } else {
-      discoverSearch.hidden = true;
-      if (src === "top") loadDiscover("/api/spotify/top");
-      if (src === "new") loadDiscover("/api/spotify/new-releases");
-    }
+    if (src === "recap") loadRecap();
+    else if (src === "playlists") loadPlaylists();
+    else if (src === "top") loadFavorites();
   });
-});
-
-function doDiscoverSearch() {
-  const q = discoverSearchInput.value.trim();
-  if (q) loadDiscover(`/api/spotify/search?q=${encodeURIComponent(q)}`);
-}
-discoverSearchBtn.addEventListener("click", doDiscoverSearch);
-discoverSearchInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") doDiscoverSearch();
 });
 
 
@@ -1036,3 +1151,9 @@ playBtn.addEventListener("click", () => {
 audioPlayer.addEventListener("play", () => {
   if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
 });
+
+// ============================================================
+// Activación inicial por hash (tras el OAuth de Spotify, la URL termina en
+// #view-spotify y queremos abrir directamente esa vista).
+// ============================================================
+activateFromHash();
