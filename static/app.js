@@ -215,6 +215,7 @@ function renderPlaylist() {
   canciones.forEach((cancion, index) => {
     const songItem = document.createElement("div");
     songItem.classList.add("song-item");
+    songItem.dataset.stem = cancion.stem.toLowerCase();
     if (index === indiceActual) songItem.classList.add("active");
 
     const songDetails = document.createElement("div");
@@ -263,7 +264,22 @@ function renderPlaylist() {
       songItem.classList.add("active");
     });
   });
+  // Reaplicar el filtro tras re-render (si el usuario había buscado algo).
+  applyPlaylistFilter();
 }
+
+/** Aplica el filtro del buscador ocultando .song-item cuyo stem no coincida. */
+function applyPlaylistFilter() {
+  const inp = document.getElementById("playlistSearch");
+  const q = inp ? inp.value.trim().toLowerCase() : "";
+  document.querySelectorAll("#playlistContainer .song-item").forEach((el) => {
+    const stem = el.dataset.stem || "";
+    el.hidden = q && !stem.includes(q);
+  });
+}
+
+// Buscador de canciones: filtro local en vivo.
+document.getElementById("playlistSearch").addEventListener("input", applyPlaylistFilter);
 
 prevBtn.addEventListener("click", () => {
   if (canciones.length === 0) return;
@@ -1145,57 +1161,105 @@ function initAudioVisualizer() {
   drawVisualizer();
 }
 
+/** Visualizador estilo "aurora": tres orbes radiales que respiran con las
+ *  frecuencias bajas/medias/altas y se desplazan lentamente. Composición
+ *  aditiva ("lighter") para que los colores se mezclen suavemente donde se
+ *  solapan. Sin barras espectrales para no competir con la letra del
+ *  reproductor. */
+function _bandAvg(data, from, to) {
+  let sum = 0;
+  const end = Math.min(to, data.length);
+  for (let i = from; i < end; i++) sum += data[i];
+  return sum / Math.max(1, end - from) / 255;
+}
+
+// Estado suavizado del visualizador: los valores instantáneos del analyser
+// son muy irregulares. Aplicamos un decaimiento exponencial ("smoothing")
+// para que los orbes crezcan rápido pero se contraigan con inercia, lo que
+// da esa sensación de "respirar con la música".
+const _viz = { bass: 0, mid: 0, high: 0, flash: 0 };
+
 function drawVisualizer() {
   visualizerRAF = requestAnimationFrame(drawVisualizer);
-  
   analyser.getByteFrequencyData(dataArray);
-  
-  const width = bgCanvas.width;
-  const height = bgCanvas.height;
-  
-  // Limpiar con negro semi-transparente para un efecto trail
-  ctx.fillStyle = "rgba(5, 5, 5, 0.2)";
-  ctx.fillRect(0, 0, width, height);
 
-  // Calcular el "bass" (frecuencias bajas) para el pulso central
-  let bassAvg = 0;
-  for(let i=0; i<10; i++) {
-    bassAvg += dataArray[i];
+  const w = bgCanvas.width;
+  const h = bgCanvas.height;
+
+  // Fade del frame anterior. Un valor alto (0.22) mantiene mucho ritmo pero
+  // acumula demasiado color; 0.16 respira mejor y no ahoga la legibilidad.
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "rgba(10, 10, 12, 0.16)";
+  ctx.fillRect(0, 0, w, h);
+
+  // Bandas raw (0..1)
+  const bass = _bandAvg(dataArray, 0, 10);
+  const mid = _bandAvg(dataArray, 10, 45);
+  const high = _bandAvg(dataArray, 45, bufferLength);
+
+  // Attack rápido / release lento — imita cómo se siente un ecualizador.
+  _viz.bass = Math.max(bass, _viz.bass * 0.86);
+  _viz.mid = Math.max(mid, _viz.mid * 0.88);
+  _viz.high = Math.max(high, _viz.high * 0.90);
+
+  // Detección de picos del bass para un "flash" ocasional (>0.55 de golpe).
+  if (bass > 0.55 && bass > _viz.bass * 0.95) {
+    _viz.flash = Math.min(1, _viz.flash + bass * 0.6);
   }
-  bassAvg = bassAvg / 10;
-  
-  // Dibujar un orbe central difuminado que pulsa con el bajo (Ambient Mode)
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const radius = (bassAvg / 255) * (Math.min(width, height) / 2) + 100;
-  
-  const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-  gradient.addColorStop(0, "rgba(30, 215, 96, 0.15)");
-  gradient.addColorStop(1, "rgba(30, 215, 96, 0)");
-  
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
-  ctx.fillStyle = gradient;
-  ctx.fill();
+  _viz.flash *= 0.92; // decae en cada frame
 
-  // Dibujar barras espectrales en la parte inferior
-  const barWidth = (width / bufferLength) * 2.5;
-  let barHeight;
-  let x = 0;
+  // Movimiento: velocidad base + un extra proporcional a la energía global.
+  const energy = (_viz.bass + _viz.mid + _viz.high) / 3;
+  const t = performance.now() / 1000;
+  const speed = 0.6 + energy * 1.4;
+  const short = Math.min(w, h);
 
-  for (let i = 0; i < bufferLength; i++) {
-    barHeight = dataArray[i] * 1.5;
+  // Los orbes reaccionan fuerte al audio: baseline pequeño, gran salto con
+  // el pico. Antes: baseline 0.42 + 0.20 * bass → radio casi constante.
+  // Ahora: baseline 0.24 + 0.55 * bass → el orbe cambia de tamaño de forma
+  // muy visible con cada golpe.
+  // Alphas reducidas para que el visualizador no ahogue el contenido; sigue
+  // siendo muy reactivo por el gran salto en `r` (radio) con cada banda.
+  const orbs = [
+    { x: w * 0.30 + Math.sin(t * 0.45 * speed) * (w * 0.10),
+      y: h * 0.38 + Math.cos(t * 0.38 * speed) * (h * 0.12),
+      r: short * (0.24 + _viz.bass * 0.55),
+      c: [30, 215, 120], a: 0.18 + _viz.bass * 0.14 },
+    { x: w * 0.70 + Math.cos(t * 0.40 * speed) * (w * 0.11),
+      y: h * 0.55 + Math.sin(t * 0.32 * speed) * (h * 0.10),
+      r: short * (0.22 + _viz.mid * 0.48),
+      c: [40, 130, 220], a: 0.16 + _viz.mid * 0.14 },
+    { x: w * 0.50 + Math.sin(t * 0.35 * speed) * (w * 0.08),
+      y: h * 0.82 + Math.cos(t * 0.48 * speed) * (h * 0.08),
+      r: short * (0.20 + _viz.high * 0.42),
+      c: [160, 70, 230], a: 0.14 + _viz.high * 0.14 },
+  ];
 
-    // Color gradient para las barras
-    const r = barHeight + (25 * (i / bufferLength));
-    const g = 250 * (i / bufferLength);
-    const b = 50;
+  ctx.globalCompositeOperation = "lighter";
+  orbs.forEach((o) => {
+    const g = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r);
+    g.addColorStop(0.0, `rgba(${o.c[0]}, ${o.c[1]}, ${o.c[2]}, ${o.a})`);
+    g.addColorStop(0.45, `rgba(${o.c[0]}, ${o.c[1]}, ${o.c[2]}, ${o.a * 0.35})`);
+    g.addColorStop(1.0, `rgba(${o.c[0]}, ${o.c[1]}, ${o.c[2]}, 0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
 
-    ctx.fillStyle = `rgb(${r},${g},${b})`;
-    ctx.fillRect(x, height - barHeight, barWidth, barHeight);
-
-    x += barWidth + 1;
+  // Flash: destello central en los golpes de bass fuertes. Más discreto
+  // ahora (0.08 vs 0.14) para no lavar el contenido.
+  if (_viz.flash > 0.02) {
+    const fr = short * (0.45 + _viz.flash * 0.35);
+    const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, fr);
+    g.addColorStop(0, `rgba(255, 255, 255, ${_viz.flash * 0.08})`);
+    g.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, fr, 0, Math.PI * 2);
+    ctx.fill();
   }
+  ctx.globalCompositeOperation = "source-over";
 }
 
 // Inicializar el visualizador en el primer clic a Play para cumplir las políticas del navegador

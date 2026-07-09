@@ -44,7 +44,8 @@
 }
 
 /* Visualizador ambiental de fondo (canvas Web Audio). Va fijo detrás de todo,
-   sin capturar clics, y con blur + opacidad para un efecto sutil y elegante. */
+   sin capturar clics, y con blur pronunciado + opacidad para un efecto tipo
+   "aurora" muy sutil que no compita con la letra del karaoke. */
 .bg-canvas {
   position: fixed;
   inset: 0;
@@ -52,8 +53,18 @@
   height: 100vh;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.5;
-  filter: blur(2px);
+  opacity: 0.42;
+  filter: blur(22px) saturate(0.95);
+}
+
+/* Capa oscura por encima del canvas para preservar legibilidad. Deja pasar
+   la atmósfera del visualizador pero devuelve contraste al contenido. */
+.bg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 30%, rgba(10, 10, 12, 0.30) 0%, rgba(10, 10, 12, 0.68) 100%);
 }
 
 /* Reset */
@@ -790,11 +801,68 @@ h2 {
   cursor: pointer;
 }
 
-/* ---- Playlist compact ---- */
-.playlist {
+/* ---- Buscador de canciones ---- */
+.playlist-search {
+  position: relative;
+  margin: 14px 0 10px;
   border-top: 1px solid var(--border);
   padding-top: 14px;
-  max-height: 220px;
+}
+
+.playlist-search svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  margin-top: 6px;
+  transform: translateY(-50%);
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.playlist-search input {
+  width: 100%;
+  background-color: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-pill);
+  padding: 9px 14px 9px 34px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.playlist-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.playlist-search input::placeholder { color: var(--text-faint); }
+
+/* ---- Playlist con altura fija y fade inferior indicando más contenido ---- */
+.playlist-wrap {
+  position: relative;
+}
+
+/* Máscara suave en el borde inferior: cuando hay más canciones que caben,
+   la última se difumina para dejar claro que hay más al hacer scroll. */
+.playlist-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 6px;
+  bottom: 0;
+  height: 26px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--bg-elev-2));
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.playlist {
+  /* Altura para 3 canciones exactas (~52-55px por fila). El resto se
+     accede por scroll; el fade inferior (.playlist-wrap::after) indica
+     que hay más contenido cuando la lista supera esa altura. */
+  max-height: 180px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--bg-elev-3) transparent;
@@ -803,7 +871,9 @@ h2 {
 .playlist::-webkit-scrollbar { width: 6px; }
 .playlist::-webkit-scrollbar-thumb { background: var(--bg-elev-3); border-radius: var(--radius-pill); }
 
-.song-item {
+/* :not([hidden]) para respetar el atributo hidden del filtro de búsqueda;
+   si sólo pongo display:flex el flex gana y el elemento se sigue mostrando. */
+.song-item:not([hidden]) {
   position: relative;
   display: flex;
   align-items: center;
