@@ -48,14 +48,14 @@ export function applyStudioSync(stem, data) {
 }
 
 export async function onStudioSongChange() {
+  setStatus(videoStatus, "");
+  if (fragPreviewStage) fragPreviewStage.hidden = true;
   const stem = studioSongSelect.value;
   if (!stem) return;
   stanzaPicker.innerHTML = "";
-  fragStartInput.value = "";
-  fragEndInput.value = "";
-  fragPreviewAudio.hidden = true;
+  if (fragStartInput) fragStartInput.value = "";
+  if (fragEndInput) fragEndInput.value = "";
   videoStanzas = null;
-  setStatus(videoStatus, "");
 
   try {
     const data = await apiGet(`/api/karaoke/${encodeURIComponent(stem)}`);
@@ -171,8 +171,11 @@ fragPreviewBtn.addEventListener("click", async () => {
       "Necesitas sincronizar la canción antes de ver la vista previa.",
       "error"
     );
+    fragPreviewStage.hidden = true;
     return;
   }
+
+  setStatus(videoStatus, "");
 
   const start = parseFloat(fragStartInput.value) || 0;
   const end = fragEndInput.value ? parseFloat(fragEndInput.value) : null;
