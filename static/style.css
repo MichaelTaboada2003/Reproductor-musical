@@ -716,8 +716,10 @@ h2 {
   justify-content: space-between;
 }
 
-.frag-actions button {
-  flex: 1;
+#fragPreviewBtn, #videoGenerateBtn {
+  min-width: 170px;
+  padding: 11px 26px;
+  font-size: 0.9rem;
 }
 
 /* Vista previa estilo terminal: replica exactamente lo que exporta el
