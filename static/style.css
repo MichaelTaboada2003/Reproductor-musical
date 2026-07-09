@@ -711,9 +711,13 @@ h2 {
 /* Fila de acciones del fragmento: dos botones ghost lado a lado. */
 .frag-actions {
   display: flex;
-  gap: 10px;
-  margin-top: 14px;
-  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 18px;
+  justify-content: space-between;
+}
+
+.frag-actions button {
+  flex: 1;
 }
 
 /* Vista previa estilo terminal: replica exactamente lo que exporta el
