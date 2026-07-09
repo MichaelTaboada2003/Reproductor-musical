@@ -76,8 +76,36 @@ function pollJob(jobId, { onDone, onError, onTick }) {
       clearInterval(interval);
       onError(e.message);
     }
-  }, 1500);
+  }, 800);
   return interval;
+}
+
+/** Refleja el estado de progreso de un job (phase + pct opcional) en una
+ *  barra. Si pct es null, la barra pasa a modo indeterminado (marching). */
+function renderProgress(prefix, job) {
+  const box = document.getElementById(prefix + "Progress");
+  if (!box) return;
+  const phase = document.getElementById(prefix + "ProgressPhase");
+  const pctEl = document.getElementById(prefix + "ProgressPct");
+  const fill = document.getElementById(prefix + "ProgressFill");
+  const p = (job && job.progress) || null;
+  if (!p) return;
+  box.hidden = false;
+  phase.textContent = p.phase || "";
+  if (p.pct === null || p.pct === undefined) {
+    box.classList.add("indeterminate");
+    pctEl.textContent = "";
+    fill.style.width = "100%";
+  } else {
+    box.classList.remove("indeterminate");
+    pctEl.textContent = Math.round(p.pct) + "%";
+    fill.style.width = Math.min(100, Math.max(0, p.pct)) + "%";
+  }
+}
+
+function hideProgress(prefix) {
+  const box = document.getElementById(prefix + "Progress");
+  if (box) box.hidden = true;
 }
 
 // ============================================================
@@ -475,12 +503,14 @@ studioSyncBtn.addEventListener("click", async () => {
   const stem = studioSongSelect.value;
   if (!stem) return;
   studioSyncBtn.disabled = true;
-  setStatus(studioStatus, "Sincronizando... si aíslas la voz, la primera vez puede tardar un par de minutos.");
+  setStatus(studioStatus, "");
 
   try {
     const { job_id } = await apiPost(`/api/sincronizar/${encodeURIComponent(stem)}`, studioSyncOptions());
     pollJob(job_id, {
+      onTick: (job) => renderProgress("sync", job),
       onDone: (result) => {
+        hideProgress("sync");
         setStatus(studioStatus, "Sincronización lista.", "ok");
         applyStudioSync(stem, result);
         studioSyncBtn.disabled = false;
@@ -493,6 +523,7 @@ studioSyncBtn.addEventListener("click", async () => {
         }
       },
       onError: (err) => {
+        hideProgress("sync");
         setStatus(studioStatus, `Error: ${err}`, "error");
         studioSyncBtn.disabled = false;
       },
@@ -725,7 +756,7 @@ videoGenerateBtn.addEventListener("click", async () => {
   const end_time = fragEndInput.value !== "" ? parseFloat(fragEndInput.value) : null;
 
   videoGenerateBtn.disabled = true;
-  setStatus(videoStatus, "Generando video... esto puede tardar varios minutos.");
+  setStatus(videoStatus, "");
 
   try {
     const { job_id } = await apiPost(`/api/video/${encodeURIComponent(stem)}`, {
@@ -734,12 +765,15 @@ videoGenerateBtn.addEventListener("click", async () => {
       separate_vocals: opts.separate_vocals, vad: opts.vad,
     });
     pollJob(job_id, {
+      onTick: (job) => renderProgress("video", job),
       onDone: (result) => {
+        hideProgress("video");
         setStatus(videoStatus, `Video generado: ${result.video}`, "ok");
         videoGenerateBtn.disabled = false;
         loadVideoGallery();
       },
       onError: (err) => {
+        hideProgress("video");
         setStatus(videoStatus, `Error: ${err}`, "error");
         videoGenerateBtn.disabled = false;
       },

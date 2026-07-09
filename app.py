@@ -85,22 +85,43 @@ _jobs: dict = {}
 _jobs_lock = threading.Lock()
 
 
-def _run_job(job_id: str, fn, *args, **kwargs):
-    try:
-        result = fn(*args, **kwargs)
-        with _jobs_lock:
-            _jobs[job_id] = {"status": "done", "result": result, "error": None}
-    except Exception as e:
-        with _jobs_lock:
-            _jobs[job_id] = {"status": "error", "result": None, "error": str(e)}
-
-
-def _start_job(fn, *args, **kwargs) -> str:
+def _start_job(fn) -> str:
+    """Lanza `fn(progress_cb)` en un hilo. `progress_cb(phase: str, pct: float | None)`
+    permite a la tarea reportar en qué fase está y (si se conoce) qué porcentaje
+    lleva. Cuando pct es None, el frontend muestra una barra indeterminada.
+    """
     job_id = uuid.uuid4().hex
     with _jobs_lock:
-        _jobs[job_id] = {"status": "running", "result": None, "error": None}
-    thread = threading.Thread(target=_run_job, args=(job_id, fn, *args), kwargs=kwargs, daemon=True)
-    thread.start()
+        _jobs[job_id] = {
+            "status": "running", "result": None, "error": None,
+            "progress": {"phase": "En cola", "pct": None},
+        }
+
+    def progress_cb(phase: str, pct=None):
+        pct_val = None
+        if pct is not None:
+            try:
+                pct_val = max(0, min(100, float(pct)))
+            except (TypeError, ValueError):
+                pct_val = None
+        with _jobs_lock:
+            j = _jobs.get(job_id)
+            if j is not None:
+                j["progress"] = {"phase": phase, "pct": pct_val}
+
+    def target():
+        try:
+            result = fn(progress_cb)
+            with _jobs_lock:
+                _jobs[job_id]["status"] = "done"
+                _jobs[job_id]["result"] = result
+                _jobs[job_id]["progress"] = {"phase": "Listo", "pct": 100}
+        except Exception as e:
+            with _jobs_lock:
+                _jobs[job_id]["status"] = "error"
+                _jobs[job_id]["error"] = str(e)
+
+    threading.Thread(target=target, daemon=True).start()
     return job_id
 
 
@@ -280,11 +301,12 @@ def api_sincronizar(stem: str, payload: SyncRequest):
     if not lyrics_path.is_file():
         raise HTTPException(400, "Esta canción no tiene letra guardada todavía.")
 
-    def _tarea():
+    def _tarea(progress_cb):
         return align_lyrics_to_audio(
             str(song), str(lyrics_path),
             language=payload.language, model_name=payload.model, force=payload.force,
             vad=_vad_value(payload.vad), separate_vocals=payload.separate_vocals,
+            progress_cb=progress_cb,
         )
 
     job_id = _start_job(_tarea)
@@ -318,13 +340,14 @@ def api_generar_video(stem: str, payload: VideoRequest):
     output_name = (payload.nombre_salida or stem).strip() or stem
     output_path = VIDEOS_DIR / f"{output_name}.mp4"
 
-    def _tarea():
+    def _tarea(progress_cb):
         tiktok_generator.create_tiktok_video(
             str(song), str(lyrics_path), str(output_path),
             language=payload.language, model=payload.model, force_sync=payload.force_sync,
             start_time=payload.start_time, end_time=payload.end_time,
             title=payload.titulo or stem, artist=payload.artista,
             vad=_vad_value(payload.vad), separate_vocals=payload.separate_vocals,
+            progress_cb=progress_cb,
         )
         return {"video": output_path.name}
 

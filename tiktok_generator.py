@@ -23,6 +23,34 @@ import numpy as np
 from lyrics_sync import align_lyrics_to_audio
 from audio_downloader import resolve_audio_source
 
+# MoviePy usa proglog para reportar el progreso del render. Con un logger
+# a medida traducimos el índice de frames a un porcentaje que enviamos al
+# `progress_cb` para que el frontend lo muestre en tiempo real.
+try:
+    from proglog import ProgressBarLogger
+except ImportError:  # pragma: no cover
+    ProgressBarLogger = None
+
+
+class _MoviepyProgressLogger(ProgressBarLogger if ProgressBarLogger else object):
+    """Traduce los eventos de proglog en llamadas a `progress_cb(phase, pct)`.
+    Solo reacciona al avance del bar principal ("t"/"main") de MoviePy."""
+
+    def __init__(self, progress_cb):
+        if ProgressBarLogger:
+            super().__init__()
+        self._cb = progress_cb
+
+    def bars_callback(self, bar, attr, value, old_value=None):
+        if attr != "index":
+            return
+        info = self.bars.get(bar) or {}
+        total = info.get("total") or 0
+        if not total:
+            return
+        pct = max(0.0, min(100.0, value / total * 100.0))
+        self._cb("Renderizando video", pct)
+
 VIDEO_SIZE = (1080, 1920)
 MARGIN_X = 70
 
@@ -190,14 +218,24 @@ def _build_fonts():
 def create_tiktok_video(audio_source, lyrics_path, output_path, language="es",
                          model="small", force_sync=False, start_time=None,
                          end_time=None, title=None, artist=None,
-                         vad="auditok", separate_vocals=True):
+                         vad="auditok", separate_vocals=True,
+                         progress_cb=None):
+    def _pc(phase, pct=None):
+        if progress_cb:
+            try:
+                progress_cb(phase, pct)
+            except Exception:
+                pass
+
     # 1. Resolver el audio (si es URL, se descarga primero como mp3).
+    _pc("Preparando audio", None)
     audio_path = resolve_audio_source(audio_source, output_dir=Path(lyrics_path).parent)
 
     # 2. Alinear la letra real del .txt con el tiempo real del audio.
     data = align_lyrics_to_audio(
         str(audio_path), lyrics_path, language=language, model_name=model, force=force_sync,
         vad=vad, separate_vocals=separate_vocals,
+        progress_cb=progress_cb,
     )
     stanzas = data["stanzas"]
     fonts = _build_fonts()
@@ -224,9 +262,15 @@ def create_tiktok_video(audio_source, lyrics_path, output_path, language="es",
     video_clip = VideoClip(make_frame, duration=duration)
     video_clip = video_clip.with_audio(trimmed_audio)
 
-    # 5. Escribir archivo final.
+    # 5. Escribir archivo final. MoviePy usa proglog; con un logger a medida
+    #    convertimos el índice de frames en un porcentaje real que el
+    #    backend expone al frontend.
+    _pc("Renderizando video", 0)
+    logger = _MoviepyProgressLogger(_pc) if progress_cb else "bar"
     print(f"Exportando {output_path}...")
-    video_clip.write_videofile(str(output_path), fps=24, codec="libx264", audio_codec="aac")
+    video_clip.write_videofile(
+        str(output_path), fps=24, codec="libx264", audio_codec="aac", logger=logger
+    )
     print("¡Video generado exitosamente!")
 
 
