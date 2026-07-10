@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from audio_downloader import is_url, resolve_audio_source
+from lyrics_sync import sync_cache_is_current
 
 from ..config import CANCIONES_DIR
 from ..utils import (
@@ -20,6 +21,23 @@ from ..utils import (
 )
 
 router = APIRouter(tags=["songs"])
+
+
+def _has_playable_sync(song) -> bool:
+    lyrics_path = lyrics_path_for(song.stem)
+    cache_path = sync_cache_path_for(song.stem)
+    if not lyrics_path.is_file() or not cache_path.is_file():
+        return False
+    try:
+        import json
+
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        return bool(
+            sync_cache_is_current(data, str(song), str(lyrics_path))
+            and data.get("quality", {}).get("playable")
+        )
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 @router.get("/api/canciones")
@@ -31,7 +49,7 @@ def api_canciones():
             "stem": p.stem,
             "duracion": obtener_duracion(p),
             "tiene_letra": lyrics_path_for(p.stem).is_file(),
-            "tiene_sync": sync_cache_path_for(p.stem).is_file(),
+            "tiene_sync": _has_playable_sync(p),
         })
     return {"canciones": canciones}
 
@@ -78,4 +96,9 @@ def api_guardar_letra(stem: str, payload: LetraRequest):
     find_song(stem)  # 404 si no existe la canción
     path = lyrics_path_for(stem)
     path.write_text(payload.texto.strip() + "\n", encoding="utf-8")
-    return {"status": "ok"}
+    # Una palabra editada basta para desplazar toda la alineación posterior.
+    cache_path = sync_cache_path_for(stem)
+    cache_invalidada = cache_path.is_file()
+    if cache_invalidada:
+        cache_path.unlink()
+    return {"status": "ok", "cache_invalidada": cache_invalidada}

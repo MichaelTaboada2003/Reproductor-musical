@@ -23,6 +23,16 @@
   --accent-2: #17b850;
   --accent-soft: rgba(30, 215, 96, 0.13);
   --accent-glow: rgba(30, 215, 96, 0.25);
+  --ambient-primary: 30, 215, 96;
+  --ambient-secondary: 46, 126, 228;
+  --ambient-tertiary: 151, 84, 225;
+  --ambient-intensity: 0.28;
+  --ambient-beat-scale: 0;
+  --ambient-shift-x: 0px;
+  --ambient-shift-y: 0px;
+  --ambient-local-x: 0px;
+  --ambient-local-y: 0px;
+  --ambient-rotate: 0deg;
 
   /* Estados */
   --danger: #f15e6c;
@@ -44,8 +54,7 @@
 }
 
 /* Visualizador ambiental de fondo (canvas Web Audio). Va fijo detrás de todo,
-   sin capturar clics, y con blur pronunciado + opacidad para un efecto tipo
-   "aurora" muy sutil que no compita con la letra del karaoke. */
+   sin capturar clics y con opacidad controlada para no competir con el karaoke. */
 .bg-canvas {
   position: fixed;
   inset: 0;
@@ -53,8 +62,15 @@
   height: 100vh;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.42;
-  filter: blur(22px) saturate(0.95);
+  opacity: 0;
+  transform: scale(1.03);
+  transform-origin: center;
+  will-change: transform, opacity;
+  transition: opacity 320ms ease;
+}
+
+body.ambient-playing .bg-canvas {
+  opacity: 0.82;
 }
 
 /* Capa oscura por encima del canvas para preservar legibilidad. Deja pasar
@@ -64,7 +80,56 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at 50% 30%, rgba(10, 10, 12, 0.30) 0%, rgba(10, 10, 12, 0.68) 100%);
+  opacity: 0;
+  background:
+    radial-gradient(1320px 760px at 12% 8%, rgba(var(--ambient-primary), 0.22) 0%, transparent 56%),
+    radial-gradient(1120px 720px at 88% 16%, rgba(var(--ambient-secondary), 0.20) 0%, transparent 54%),
+    radial-gradient(960px 620px at 50% 100%, rgba(var(--ambient-tertiary), 0.18) 0%, transparent 56%),
+    radial-gradient(circle at 52% 42%, rgba(6, 8, 10, 0.06) 0%, rgba(6, 8, 10, 0.26) 38%, rgba(6, 8, 10, 0.58) 74%, rgba(6, 8, 10, 0.80) 100%),
+    linear-gradient(180deg, rgba(5, 6, 8, 0.16), rgba(5, 6, 8, 0.58));
+  transition: opacity 280ms ease;
+}
+
+body.ambient-playing .bg-overlay {
+  opacity: 1;
+}
+
+/* En equipos modestos concentramos el ambiente en la capa principal: el
+   movimiento sigue respondiendo a la canción sin multiplicar blur layers. */
+body.ambient-low-power .bg-overlay::before {
+  filter: blur(48px) saturate(1.04);
+}
+
+.bg-overlay::before {
+  content: "";
+  position: absolute;
+  inset: -12%;
+  background:
+    conic-gradient(
+      from 0deg at 50% 45%,
+      rgba(var(--ambient-primary), 0.30) 0deg,
+      rgba(var(--ambient-secondary), 0.17) 104deg,
+      transparent 176deg,
+      rgba(var(--ambient-tertiary), 0.26) 248deg,
+      transparent 330deg,
+      rgba(var(--ambient-primary), 0.30) 360deg
+    );
+  opacity: calc(0.34 + var(--ambient-intensity) * 0.40);
+  filter: blur(68px) saturate(1.16);
+  transform: translate(var(--ambient-shift-x), var(--ambient-shift-y))
+    rotate(var(--ambient-rotate))
+    scale(calc(1 + var(--ambient-beat-scale)));
+  transform-origin: center;
+  will-change: transform, opacity;
+  transition: transform 110ms linear, opacity 110ms linear;
+}
+
+.bg-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(940px 580px at 52% 42%, rgba(6, 8, 10, 0.02) 0%, rgba(6, 8, 10, 0.08) 24%, rgba(6, 8, 10, 0.24) 44%, rgba(6, 8, 10, 0.44) 68%, rgba(6, 8, 10, 0.54) 100%);
 }
 
 /* Reset */
@@ -81,8 +146,14 @@ body {
   background:
     radial-gradient(1100px 560px at 12% -12%, #1a1f1c 0%, transparent 58%),
     radial-gradient(900px 480px at 108% -6%, #15191c 0%, transparent 52%),
-    var(--bg);
+    linear-gradient(180deg, #090a0d 0%, var(--bg) 100%);
   -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.ambient-playing .bg-canvas {
+    opacity: 0.42;
+  }
 }
 
 /* ---------- App shell ---------- */
@@ -166,6 +237,7 @@ body {
   max-width: 980px;
   position: relative;
   z-index: 1;
+  isolation: isolate;
 }
 
 h1 {
@@ -715,6 +787,114 @@ h2 {
   margin-top: 20px;
 }
 
+.sync-quality {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.sync-quality-label {
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.sync-quality-detail {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.sync-quality.alta .sync-quality-label,
+.sync-quality.buena .sync-quality-label { color: var(--accent); }
+.sync-quality.revisar .sync-quality-label { color: var(--warn); }
+.sync-quality.baja .sync-quality-label { color: var(--danger); }
+
+.sync-review {
+  margin-top: 12px;
+  padding: 0 12px 12px;
+  border: 1px solid rgba(255, 189, 46, 0.26);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 189, 46, 0.045);
+}
+
+.sync-review summary {
+  padding: 12px 0 8px;
+  color: var(--warn);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sync-review .hint { margin: 2px 0 12px; }
+
+#syncReviewAudio {
+  width: 100%;
+  height: 34px;
+  margin-bottom: 10px;
+}
+
+.sync-review-list {
+  display: grid;
+  gap: 8px;
+  max-height: 270px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.sync-review-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 116px 116px auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.sync-review-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+}
+
+.sync-review-row label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
+.sync-review-row input {
+  width: 58px;
+  padding: 5px 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sync-locate {
+  min-width: 68px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.sync-locate:hover { color: var(--text); border-color: var(--accent); }
+
+#syncReviewSaveBtn { margin-top: 12px; }
+
 #studioSyncBtn, #studioListenVocalsBtn {
   margin-top: 0;
   align-self: auto;
@@ -748,25 +928,47 @@ h2 {
   align-self: auto;
 }
 
-/* Vista previa estilo terminal: replica exactamente lo que exporta el
-   generador de video (tiktok_generator.py). Paleta idéntica al render:
-   fondo #0d1117, barra #20252b, dots macOS, título amarillo, artista
-   verde, letra cian bold monoespaciada, cursor de bloque parpadeante. */
+/* Vista previa del export: aurora estática + ventana tipográfica. El fondo
+   tiene profundidad, pero la letra conserva el mayor contraste. */
 .term-stage {
+  position: relative;
+  isolation: isolate;
   margin-top: 14px;
-  border-radius: var(--radius);
+  padding: 14px;
+  border-radius: 22px;
   overflow: hidden;
   box-shadow: var(--shadow);
-  border: 1px solid #000;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #080b12;
   font-family: "Menlo", "SF Mono", "DejaVu Sans Mono", "Courier New", monospace;
 }
 
+.term-stage::before,
+.term-stage::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  width: 58%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(52px);
+  opacity: 0.55;
+}
+
+.term-stage::before { top: -30%; left: -12%; background: #24c99b; }
+.term-stage::after { right: -16%; bottom: -42%; background: #586edc; }
+
 .term-titlebar {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
   background: #20252b;
+  border: 1px solid rgba(175, 198, 230, 0.24);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
 }
 
 .term-dot {
@@ -802,9 +1004,14 @@ h2 {
 .term-close:hover { color: #fff; }
 
 .term-body {
+  position: relative;
+  z-index: 1;
   background: #0d1117;
   padding: 30px 28px 40px;
   min-height: 260px;
+  border: 1px solid rgba(175, 198, 230, 0.24);
+  border-top: none;
+  border-radius: 0 0 16px 16px;
 }
 
 .term-header {
@@ -841,14 +1048,19 @@ h2 {
   display: block;
 }
 
-/* Cada palabra empieza invisible; al revelarse aparece en cian bold. */
+/* Las palabras futuras mantienen contexto sin competir con la activa. */
 .term-word {
-  color: transparent;
+  color: #4c5b6f;
   transition: color 0.06s ease;
 }
 
 .term-word.revealed {
   color: #3cdcdc;
+}
+
+.term-word.current {
+  color: #e4ffff;
+  text-shadow: 0 0 12px rgba(110, 235, 235, 0.56);
 }
 
 /* Cursor de bloque parpadeante al final de la última palabra revelada.
@@ -980,6 +1192,8 @@ h2 {
 }
 
 .now-playing {
+  position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-columns: 340px 1fr;
   gap: 40px;
@@ -989,11 +1203,80 @@ h2 {
   align-items: center;
 }
 
+.now-playing::before {
+  content: "";
+  position: absolute;
+  inset: -10% -8%;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 40px;
+  background:
+    radial-gradient(46% 40% at 22% 38%, rgba(var(--ambient-primary), 0.34) 0%, transparent 74%),
+    radial-gradient(44% 38% at 76% 34%, rgba(var(--ambient-secondary), 0.28) 0%, transparent 72%),
+    radial-gradient(42% 36% at 54% 78%, rgba(var(--ambient-tertiary), 0.25) 0%, transparent 74%);
+  opacity: 0;
+  filter: blur(78px) saturate(1.12);
+  transform: translate(var(--ambient-local-x), var(--ambient-local-y))
+    scale(calc(1 + var(--ambient-beat-scale)));
+  will-change: transform, opacity;
+  transition: transform 110ms linear, opacity 280ms ease;
+}
+
+body.ambient-playing .now-playing::before {
+  opacity: calc(0.56 + var(--ambient-intensity) * 0.28);
+}
+
+.now-playing > * {
+  position: relative;
+  z-index: 1;
+}
+
 /* ---- Columna izquierda: artwork + controles + playlist ---- */
 .np-controls {
+  position: relative;
+  gap: 0;
+  padding: 18px 18px 20px;
+  border-radius: 30px;
+  background: linear-gradient(
+    180deg,
+    rgba(11, 12, 16, 0.68),
+    rgba(11, 12, 16, 0.44)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 18px 64px rgba(0, 0, 0, 0.28);
   display: flex;
   flex-direction: column;
-  gap: 0;
+  overflow: hidden;
+}
+
+.np-controls::before {
+  content: "";
+  position: absolute;
+  inset: -24% -14%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 38% at 20% 22%, rgba(var(--ambient-primary), 0.22) 0%, transparent 72%),
+    radial-gradient(40% 34% at 88% 68%, rgba(var(--ambient-secondary), 0.18) 0%, transparent 74%);
+  filter: blur(64px);
+  opacity: 0;
+  transform: translate(var(--ambient-local-x), var(--ambient-local-y));
+  will-change: transform, opacity;
+  transition: transform 110ms linear, opacity 280ms ease;
+}
+
+body.ambient-playing .np-controls::before {
+  opacity: calc(0.34 + var(--ambient-intensity) * 0.22);
+}
+
+body.ambient-low-power .np-controls::before,
+body.ambient-low-power .np-lyrics::before {
+  display: none;
+}
+
+.np-controls > * {
+  position: relative;
+  z-index: 1;
 }
 
 .np-artwork {
@@ -1257,6 +1540,28 @@ h2 {
   justify-content: center;
 }
 
+.np-lyrics::before {
+  content: "";
+  position: absolute;
+  inset: 6% 2%;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 34px;
+  background:
+    radial-gradient(44% 40% at 34% 28%, rgba(var(--ambient-secondary), 0.22) 0%, transparent 74%),
+    radial-gradient(40% 34% at 74% 72%, rgba(var(--ambient-tertiary), 0.20) 0%, transparent 76%);
+  filter: blur(68px) saturate(1.08);
+  opacity: 0;
+  transform: translate(var(--ambient-local-x), var(--ambient-local-y))
+    scale(calc(1 + var(--ambient-beat-scale) * 0.8));
+  will-change: transform, opacity;
+  transition: transform 110ms linear, opacity 280ms ease;
+}
+
+body.ambient-playing .np-lyrics::before {
+  opacity: calc(0.28 + var(--ambient-intensity) * 0.22);
+}
+
 /* El escenario de karaoke llena toda la columna */
 .np-lyrics .karaoke-stage {
   position: absolute;
@@ -1298,12 +1603,12 @@ h2 {
 /* ---------- Karaoke (estilo Apple Music) ---------- */
 .karaoke-stage {
   margin-top: 24px;
-  background: radial-gradient(circle at 50% -10%, #1a2620 0%, #161618 55%, var(--bg-elev-1) 100%);
-  border: 1px solid var(--border);
+  background: radial-gradient(circle at 50% -10%, rgba(24, 30, 27, 0.92) 0%, rgba(18, 19, 22, 0.94) 55%, rgba(13, 14, 18, 0.96) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: var(--radius-lg);
   padding: 28px 32px 36px;
   text-align: center;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.32);
 }
 
 .karaoke-stage audio {

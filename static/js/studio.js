@@ -30,9 +30,18 @@ const fragPreviewArtist = document.getElementById("fragPreviewArtist");
 
 const studioListenVocalsBtn = document.getElementById("studioListenVocalsBtn");
 const studioVocalsAudio = document.getElementById("studioVocalsAudio");
+const syncQuality = document.getElementById("syncQuality");
+const syncQualityLabel = document.getElementById("syncQualityLabel");
+const syncQualityDetail = document.getElementById("syncQualityDetail");
+const syncReview = document.getElementById("syncReview");
+const syncReviewSummary = document.getElementById("syncReviewSummary");
+const syncReviewList = document.getElementById("syncReviewList");
+const syncReviewAudio = document.getElementById("syncReviewAudio");
+const syncReviewSaveBtn = document.getElementById("syncReviewSaveBtn");
 
 let videoStanzas = null;
 let fragPreviewRAF = null;
+let syncReviewData = null;
 
 // ---- Opciones compartidas de sincronización --------------------------------
 
@@ -47,7 +56,86 @@ export function studioSyncOptions() {
 }
 
 export function applyStudioSync(stem, data) {
-  renderStanzaPicker(data.stanzas);
+  renderSyncQuality(data?.quality);
+  renderSyncReview(stem, data);
+  if (data?.quality?.playable) renderStanzaPicker(data.stanzas);
+  else {
+    videoStanzas = null;
+    stanzaPicker.innerHTML = "";
+  }
+}
+
+function renderSyncQuality(quality) {
+  if (!syncQuality || !syncQualityLabel || !syncQualityDetail) return;
+  if (!quality) {
+    syncQuality.hidden = true;
+    return;
+  }
+
+  const labels = {
+    alta: "Sincronía alta",
+    buena: "Sincronía buena",
+    revisar: "Sincronía a revisar",
+    baja: "Sincronía insuficiente",
+  };
+  const coverage = Math.round((quality.coverage || 0) * 100);
+  const repairs = quality.timing_repairs || 0;
+  const unresolved = quality.unresolved_words || 0;
+  const manual = quality.manual_words || 0;
+  syncQuality.hidden = false;
+  syncQuality.className = `sync-quality ${quality.label || "baja"}`;
+  syncQualityLabel.textContent = labels[quality.label] || labels.baja;
+  syncQualityDetail.textContent =
+    `${coverage}% de palabras ancladas al audio` +
+    (unresolved
+      ? ` · ${unresolved} por ajustar`
+      : repairs
+        ? ` · ${repairs} tiempos normalizados`
+        : " · tiempos consistentes") +
+    (manual ? ` · ${manual} ajustes manuales` : "");
+}
+
+function renderSyncReview(stem, data) {
+  syncReviewData = null;
+  syncReview.hidden = true;
+  syncReviewList.innerHTML = "";
+  if (!data?.stanzas) return;
+
+  const pending = [];
+  data.stanzas.forEach((stanza, stanzaIndex) => {
+    stanza.forEach((line, lineIndex) => {
+      (line.words || []).forEach((word, wordIndex) => {
+        if (!word.synced) pending.push({ stanzaIndex, lineIndex, wordIndex, word });
+      });
+    });
+  });
+  if (!pending.length) return;
+
+  syncReviewData = data;
+  syncReview.hidden = false;
+  syncReviewSummary.textContent = `Ajustar ${pending.length} palabra${pending.length === 1 ? "" : "s"} aproximada${pending.length === 1 ? "" : "s"}`;
+  const song = canciones.find((item) => item.stem === stem);
+  if (song) syncReviewAudio.src = `/canciones/${encodeURIComponent(song.nombre)}`;
+
+  pending.forEach(({ stanzaIndex, lineIndex, wordIndex, word }) => {
+    const row = document.createElement("div");
+    row.className = "sync-review-row";
+    row.dataset.stanza = stanzaIndex;
+    row.dataset.line = lineIndex;
+    row.dataset.word = wordIndex;
+    row.innerHTML = `
+      <strong>${word.text}</strong>
+      <label>Inicio <input class="sync-time-start" type="number" min="0" step="0.1" value="${Number(word.start).toFixed(1)}"></label>
+      <label>Fin <input class="sync-time-end" type="number" min="0" step="0.1" value="${Number(word.end).toFixed(1)}"></label>
+      <button type="button" class="sync-locate">Escuchar</button>
+    `;
+    const locate = row.querySelector(".sync-locate");
+    locate.addEventListener("click", () => {
+      syncReviewAudio.currentTime = Number(row.querySelector(".sync-time-start").value) || 0;
+      syncReviewAudio.play();
+    });
+    syncReviewList.appendChild(row);
+  });
 }
 
 export async function onStudioSongChange() {
@@ -70,6 +158,8 @@ export async function onStudioSongChange() {
   if (fragStartInput) fragStartInput.value = "";
   if (fragEndInput) fragEndInput.value = "";
   videoStanzas = null;
+  renderSyncQuality(null);
+  renderSyncReview(null, null);
 
   try {
     const data = await apiGet(`/api/karaoke/${encodeURIComponent(stem)}`);
@@ -77,9 +167,17 @@ export async function onStudioSongChange() {
       studioListenVocalsBtn.hidden = false;
       studioVocalsAudio.src = `/vocals/${encodeURIComponent(stem)}.vocals.wav`;
     }
-    if (data.existe) {
-      setStatus(studioStatus, "Ya existe una sincronización. Puedes usarla o re-sincronizar.");
+    if (data.actual) {
       applyStudioSync(stem, data.datos);
+      setStatus(
+        studioStatus,
+        data.existe
+          ? "Sincronización vigente. Puedes usarla o re-sincronizar."
+          : "La sincronización vigente necesita revisión antes de usarse en karaoke o video.",
+        data.existe ? "ok" : "error"
+      );
+    } else if (data.stale) {
+      setStatus(studioStatus, "La letra o el audio cambiaron. Vuelve a sincronizar.");
     } else {
       setStatus(studioStatus, "Esta canción aún no está sincronizada. Pulsa 'Sincronizar'.");
     }
@@ -121,15 +219,22 @@ studioSyncBtn.addEventListener("click", async () => {
       onTick: (job) => renderProgress("sync", job),
       onDone: (result) => {
         hideProgress("sync");
-        setStatus(studioStatus, "Sincronización lista.", "ok");
+        const playable = result.quality?.playable;
+        setStatus(
+          studioStatus,
+          playable
+            ? "Sincronización lista. Revisa el indicador de calidad antes de exportar."
+            : "La sincronización se guardó, pero necesita revisión antes de karaoke o video.",
+          playable ? "ok" : "error"
+        );
         applyStudioSync(stem, result);
         studioSyncBtn.disabled = false;
         refreshSongSelect(studioSongSelect);
         // Si el tema sincronizado es el que suena, refrescar su karaoke.
         const actual = canciones[indiceActual];
         if (actual && actual.stem === stem) {
-          actual.tiene_sync = true;
-          showKaraoke(stem, result);
+          actual.tiene_sync = playable;
+          if (playable) showKaraoke(stem, result);
         }
       },
       onError: (err) => {
@@ -141,6 +246,34 @@ studioSyncBtn.addEventListener("click", async () => {
   } catch (e) {
     setStatus(studioStatus, `Error: ${e.message}`, "error");
     studioSyncBtn.disabled = false;
+  }
+});
+
+syncReviewSaveBtn.addEventListener("click", async () => {
+  const stem = studioSongSelect.value;
+  if (!stem || !syncReviewData) return;
+  const adjustments = [...syncReviewList.querySelectorAll(".sync-review-row")].map((row) => ({
+    stanza: Number(row.dataset.stanza),
+    line: Number(row.dataset.line),
+    word: Number(row.dataset.word),
+    start: Number(row.querySelector(".sync-time-start").value),
+    end: Number(row.querySelector(".sync-time-end").value),
+  }));
+  syncReviewSaveBtn.disabled = true;
+  try {
+    const result = await apiPost(`/api/karaoke/${encodeURIComponent(stem)}/ajustes`, { adjustments });
+    applyStudioSync(stem, result.datos);
+    refreshSongSelect(studioSongSelect);
+    const actual = canciones[indiceActual];
+    if (actual?.stem === stem) {
+      actual.tiene_sync = Boolean(result.calidad?.playable);
+      if (actual.tiene_sync) showKaraoke(stem, result.datos);
+    }
+    setStatus(studioStatus, "Ajustes guardados. La calidad se recalculó con tus tiempos.", "ok");
+  } catch (error) {
+    setStatus(studioStatus, `No se pudieron guardar los ajustes: ${error.message}`, "error");
+  } finally {
+    syncReviewSaveBtn.disabled = false;
   }
 });
 
@@ -318,11 +451,14 @@ function _updateFragTerminal() {
   let lastRevealed = null;
   words.forEach((w) => {
     const start = parseFloat(w.dataset.start);
+    const end = parseFloat(w.dataset.end);
     if (t >= start) {
       w.classList.add("revealed");
+      w.classList.toggle("current", t < end);
       lastRevealed = w;
     } else {
       w.classList.remove("revealed");
+      w.classList.remove("current");
     }
   });
 

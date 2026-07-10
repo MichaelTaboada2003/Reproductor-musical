@@ -53,6 +53,11 @@ export function cargarCancion(index) {
     audioPlayer.src = "";
     currentSongTitle.textContent = "Sin canción";
     currentArtistName.textContent = "Artista";
+    window.dispatchEvent(
+      new CustomEvent("music-lab:songchange", {
+        detail: { title: "Music Lab Ambient" },
+      })
+    );
     _loadPlayerLyrics(null);
     return;
   }
@@ -61,6 +66,14 @@ export function cargarCancion(index) {
     ? "Letra disponible"
     : "Sin letra guardada";
   audioPlayer.src = `/canciones/${encodeURIComponent(cancion.nombre)}`;
+  window.dispatchEvent(
+    new CustomEvent("music-lab:songchange", {
+      detail: {
+        title: cancion.stem,
+        filename: cancion.nombre,
+      },
+    })
+  );
   _loadPlayerLyrics(cancion);
 }
 

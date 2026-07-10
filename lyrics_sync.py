@@ -19,9 +19,14 @@ Uso como librería:
 
 import argparse
 import difflib
+import hashlib
 import json
+import math
+import os
 import re
 import sys
+import tempfile
+import unicodedata
 from pathlib import Path
 
 try:
@@ -31,15 +36,20 @@ except ImportError:
 
 WHISPER_SAMPLE_RATE = 16000
 _WORD_RE = re.compile(r"[^\w'áéíóúñüàèìòùâêîôûäëïöü]+", re.UNICODE)
+CACHE_VERSION = 2
+MIN_WORD_DURATION = 0.06
+PROMPT_MAX_CHARS = 480
 
 _MODEL_CACHE = {}
 
 
 def normalize_word(word: str) -> str:
     """Normaliza una palabra para poder comparar letra vs. transcripción."""
-    word = word.lower().strip()
+    word = unicodedata.normalize("NFKD", word.lower().strip())
+    word = "".join(char for char in word if not unicodedata.combining(char))
+    word = word.replace("’", "'").replace("`", "'")
     word = _WORD_RE.sub("", word)
-    return word
+    return word.replace("'", "")
 
 
 def parse_lyrics_file(path) -> list:
@@ -78,17 +88,27 @@ def _get_model(model_name: str):
     return _MODEL_CACHE[model_name]
 
 
-def _transcribe(audio_path: str, language: str, model_name: str, vad=None):
+def _transcribe(
+    audio_path: str,
+    language: str,
+    model_name: str,
+    vad=None,
+    initial_prompt: str = None,
+):
     model = _get_model(model_name)
     print(f"Transcribiendo {audio_path} para obtener tiempos reales...")
     audio = whisper.load_audio(audio_path)
     duration = len(audio) / WHISPER_SAMPLE_RATE
-    kwargs = {}
+    kwargs = {"beam_size": 5}
     if vad:
         # VAD (detección de voz): descarta las zonas sin voz antes de
         # transcribir, evitando que Whisper "invente" letra sobre los
         # instrumentales. Acepta True, "silero" o "auditok".
         kwargs["vad"] = vad
+    if initial_prompt:
+        # La letra guía el vocabulario de Whisper, pero los tiempos siguen
+        # viniendo del audio y nunca se inventan desde el texto.
+        kwargs["initial_prompt"] = initial_prompt
     result = whisper.transcribe(model, audio, language=language, **kwargs)
     return result, duration
 
@@ -220,6 +240,166 @@ def _default_cache_path(lyrics_path) -> Path:
     return Path(lyrics_path).with_suffix("").with_name(Path(lyrics_path).stem + ".sync.json")
 
 
+def _audio_signature(audio_path: str) -> dict:
+    path = Path(audio_path).resolve()
+    stat = path.stat()
+    return {
+        "path": str(path),
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+    }
+
+
+def _lyrics_signature(lyrics_path: str) -> dict:
+    path = Path(lyrics_path).resolve()
+    raw = path.read_bytes()
+    stat = path.stat()
+    return {
+        "path": str(path),
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
+
+
+def sync_cache_is_current(data: dict, audio_path: str, lyrics_path: str) -> bool:
+    """Comprueba que una cache pertenezca exactamente a los archivos actuales."""
+    try:
+        return (
+            data.get("cache_version") == CACHE_VERSION
+            and data.get("audio_signature") == _audio_signature(audio_path)
+            and data.get("lyrics_signature") == _lyrics_signature(lyrics_path)
+        )
+    except (OSError, TypeError):
+        return False
+
+
+def _atomic_json_write(path: Path, data: dict) -> None:
+    """Evita que el reproductor lea una cache a medio escribir."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, path)
+    finally:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+
+
+def _lyrics_prompt(stanzas: list) -> str:
+    text = " ".join(line for stanza in stanzas for line in stanza)
+    return text[:PROMPT_MAX_CHARS]
+
+
+def _sanitize_word_times(times, matched_flags, total_duration):
+    """Hace que el karaoke sea temporalmente seguro y marca correcciones.
+
+    Whisper puede producir micro-solapes y la interpolación puede invertir
+    palabras. Para un wipe secuencial preferimos una marca aproximada antes
+    que mostrar un progreso que retrocede o divide por cero en el navegador.
+    """
+    cleaned = []
+    repaired = [False] * len(times)
+    cursor = 0.0
+
+    for index, item in enumerate(times):
+        repair = item is None
+        if item is None:
+            start, end = cursor, cursor + MIN_WORD_DURATION
+        else:
+            start, end = item
+            if not (math.isfinite(start) and math.isfinite(end)):
+                start, end = cursor, cursor + MIN_WORD_DURATION
+                repair = True
+
+        if start < cursor:
+            start = cursor
+            repair = True
+        if end <= start:
+            end = start + MIN_WORD_DURATION
+            repair = True
+        if end > total_duration:
+            end = total_duration
+            repair = True
+        if end <= start:
+            raise ValueError(
+                "La letra contiene más palabras de las que caben en el audio. "
+                "Revisa la letra o vuelve a sincronizar con otra configuración."
+            )
+
+        cleaned.append((start, end))
+        cursor = end
+        if repair:
+            repaired[index] = True
+            matched_flags[index] = False
+
+    return cleaned, repaired
+
+
+def _quality_report(matched_flags, repaired_flags, confidences):
+    total = len(matched_flags)
+    direct = sum(1 for matched in matched_flags if matched)
+    repairs = sum(1 for repaired in repaired_flags if repaired)
+    coverage = direct / total if total else 0.0
+    valid_confidences = [
+        value
+        for value, matched in zip(confidences, matched_flags)
+        if matched and value is not None
+    ]
+    avg_confidence = (
+        sum(valid_confidences) / len(valid_confidences)
+        if valid_confidences
+        else None
+    )
+    confidence_bonus = max(0.0, (avg_confidence or 0.5) - 0.5) * 10
+    score = max(0.0, min(100.0, coverage * 100 - (repairs / max(total, 1)) * 25 + confidence_bonus))
+
+    if score >= 90 and coverage >= 0.85 and repairs <= 2:
+        label = "alta"
+    elif score >= 72 and coverage >= 0.70:
+        label = "buena"
+    elif score >= 55 and coverage >= 0.55:
+        label = "revisar"
+    else:
+        label = "baja"
+
+    return {
+        "score": round(score, 1),
+        "label": label,
+        "playable": label != "baja",
+        "direct_words": direct,
+        "total_words": total,
+        "coverage": round(coverage, 4),
+        "timing_repairs": repairs,
+        "avg_confidence": round(avg_confidence, 4) if avg_confidence is not None else None,
+    }
+
+
+def quality_from_stanzas(stanzas: list) -> dict:
+    """Reconstruye la calidad tras una corrección manual de tiempos.
+
+    Las palabras ajustadas por la persona pasan a ser anclas fiables para
+    karaoke y video, pero las que siguen aproximadas continúan visibles en el
+    informe para que no se confundan con una sincronía completamente automática.
+    """
+    words = [
+        word
+        for stanza in stanzas
+        for line in stanza
+        for word in line.get("words", [])
+    ]
+    matched = [bool(word.get("synced")) for word in words]
+    repaired = [bool(word.get("timing_repaired")) for word in words]
+    confidences = [word.get("confidence") for word in words]
+    quality = _quality_report(matched, repaired, confidences)
+    quality["unresolved_words"] = sum(1 for value in matched if not value)
+    quality["manual_words"] = sum(1 for word in words if word.get("manual"))
+    return quality
+
+
 def align_lyrics_to_audio(
     audio_path: str,
     lyrics_path: str,
@@ -262,6 +442,7 @@ def align_lyrics_to_audio(
     # La firma de configuración: si cambia, el cache se invalida.
     config_sig = {
         "model": model_name,
+        "language": language,
         "vad": vad if isinstance(vad, (str, bool)) else True,
         "separate_vocals": bool(separate_vocals),
     }
@@ -275,16 +456,15 @@ def align_lyrics_to_audio(
                 pass
 
     if cache_path.is_file() and not force:
-        with open(cache_path, "r", encoding="utf-8") as f:
-            cached = json.load(f)
-        if (
-            cached.get("audio") == str(audio_path)
-            and cached.get("lyrics_mtime") == Path(lyrics_path).stat().st_mtime
-            and cached.get("config") == config_sig
-        ):
-            print(f"Usando sincronización cacheada: {cache_path}")
-            _pc("Usando sincronización cacheada", 100)
-            return cached
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                cached = json.load(f)
+            if sync_cache_is_current(cached, audio_path, lyrics_path) and cached.get("config") == config_sig:
+                print(f"Usando sincronización cacheada: {cache_path}")
+                _pc("Usando sincronización cacheada", 100)
+                return cached
+        except (OSError, json.JSONDecodeError):
+            pass
 
     _pc("Preparando letra", 5)
     stanzas_raw = parse_lyrics_file(lyrics_path)
@@ -314,18 +494,30 @@ def align_lyrics_to_audio(
             transcribe_audio = audio_path
 
     _pc("Transcribiendo audio (Whisper)", 55)
-    transcription, duration = _transcribe(transcribe_audio, language, model_name, vad=vad)
+    transcription, duration = _transcribe(
+        transcribe_audio,
+        language,
+        model_name,
+        vad=vad,
+        initial_prompt=_lyrics_prompt(stanzas_raw),
+    )
 
     whisper_words = []
     for seg in transcription.get("segments", []):
         for w in seg.get("words", []):
             norm = normalize_word(w.get("text", ""))
             if norm:
-                whisper_words.append((norm, w["start"], w["end"]))
+                confidence = w.get("confidence")
+                try:
+                    confidence = float(confidence) if confidence is not None else None
+                except (TypeError, ValueError):
+                    confidence = None
+                whisper_words.append((norm, w["start"], w["end"], confidence))
     whisper_tokens = [w[0] for w in whisper_words]
 
     _pc("Alineando letra con audio", 90)
     lyric_word_times = [None] * len(lyrics_tokens)
+    matched_confidences = [None] * len(lyrics_tokens)
     sm = difflib.SequenceMatcher(a=whisper_tokens, b=lyrics_tokens, autojunk=False)
     for block in sm.get_matching_blocks():
         for k in range(block.size):
@@ -333,6 +525,7 @@ def align_lyrics_to_audio(
                 whisper_words[block.a + k][1],
                 whisper_words[block.a + k][2],
             )
+            matched_confidences[block.b + k] = whisper_words[block.a + k][3]
 
     # Guardamos qué palabras reconoció Whisper (tiempos fiables) vs. cuáles
     # se rellenaron por interpolación (tiempos aproximados).
@@ -346,7 +539,9 @@ def align_lyrics_to_audio(
     # Pasada 2: resolver líneas que quedaron completamente sin reconocer,
     # usando el contexto de las palabras ya ubicadas alrededor.
     _fill_missing_times(lyric_word_times, duration)
-
+    lyric_word_times, repaired_flags = _sanitize_word_times(
+        lyric_word_times, matched_flags, duration
+    )
     # Reconstruir estrofas/líneas con tiempos
     idx = 0
     result_stanzas = []
@@ -364,6 +559,13 @@ def align_lyrics_to_audio(
                     "start": round(start, 3),
                     "end": round(end, 3),
                     "synced": matched_flags[idx],
+                    "manual": False,
+                    "timing_repaired": repaired_flags[idx],
+                    "confidence": (
+                        round(matched_confidences[idx], 4)
+                        if matched_confidences[idx] is not None
+                        else None
+                    ),
                 })
                 idx += 1
             if word_entries:
@@ -377,17 +579,22 @@ def align_lyrics_to_audio(
         result_stanzas.append(result_lines)
 
     data = {
+        "cache_version": CACHE_VERSION,
         "audio": str(audio_path),
         "lyrics": str(lyrics_path),
         "lyrics_mtime": Path(lyrics_path).stat().st_mtime,
+        "audio_signature": _audio_signature(audio_path),
+        "lyrics_signature": _lyrics_signature(lyrics_path),
         "language": language,
         "duration": duration,
         "config": config_sig,
         "stanzas": result_stanzas,
     }
+    # Se calcula desde los datos publicados para conservar exactamente el mismo
+    # criterio cuando después se corrigen algunas palabras a mano.
+    data["quality"] = quality_from_stanzas(result_stanzas)
 
-    with open(cache_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    _atomic_json_write(cache_path, data)
     print(f"Sincronización guardada en: {cache_path}")
 
     return data
