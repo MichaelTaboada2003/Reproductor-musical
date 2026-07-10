@@ -745,6 +745,7 @@ h2 {
   font-size: 0.85rem;
   text-align: center;
   box-sizing: border-box;
+  align-self: auto;
 }
 
 /* Vista previa estilo terminal: replica exactamente lo que exporta el
