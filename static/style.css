@@ -712,6 +712,17 @@ h2 {
   display: flex;
   gap: 14px;
   align-items: center;
+  margin-top: 20px;
+}
+
+#studioSyncBtn, #studioListenVocalsBtn {
+  margin-top: 0;
+  align-self: auto;
+}
+
+#studioListenVocalsBtn {
+  padding: 11px 26px;
+  font-size: 0.9rem;
 }
 
 /* Fila de acciones del fragmento: dos botones ghost lado a lado. */
