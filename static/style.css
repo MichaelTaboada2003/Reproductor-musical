@@ -75,7 +75,7 @@
 }
 
 body.ambient-playing .bg-canvas {
-  opacity: 0.82;
+  opacity: 0.86;
 }
 
 /* Capa oscura por encima del canvas para preservar legibilidad. Deja pasar
@@ -87,10 +87,10 @@ body.ambient-playing .bg-canvas {
   pointer-events: none;
   opacity: 0;
   background:
-    radial-gradient(1320px 760px at 12% 8%, rgba(var(--ambient-primary), 0.22) 0%, transparent 56%),
-    radial-gradient(1120px 720px at 88% 16%, rgba(var(--ambient-secondary), 0.20) 0%, transparent 54%),
-    radial-gradient(960px 620px at 50% 100%, rgba(var(--ambient-tertiary), 0.18) 0%, transparent 56%),
-    radial-gradient(circle at 52% 42%, rgba(6, 8, 10, 0.06) 0%, rgba(6, 8, 10, 0.26) 38%, rgba(6, 8, 10, 0.58) 74%, rgba(6, 8, 10, 0.80) 100%),
+    radial-gradient(1320px 760px at 12% 8%, rgba(var(--ambient-primary), 0.24) 0%, transparent 56%),
+    radial-gradient(1120px 720px at 88% 16%, rgba(var(--ambient-secondary), 0.22) 0%, transparent 54%),
+    radial-gradient(960px 620px at 50% 100%, rgba(var(--ambient-tertiary), 0.20) 0%, transparent 56%),
+    radial-gradient(circle at 52% 42%, rgba(6, 8, 10, 0.06) 0%, rgba(6, 8, 10, 0.25) 38%, rgba(6, 8, 10, 0.55) 74%, rgba(6, 8, 10, 0.77) 100%),
     linear-gradient(180deg, rgba(5, 6, 8, 0.16), rgba(5, 6, 8, 0.58));
   transition: opacity 280ms ease;
 }
@@ -134,7 +134,7 @@ body.ambient-low-power .bg-overlay::before {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(940px 580px at 52% 42%, rgba(6, 8, 10, 0.02) 0%, rgba(6, 8, 10, 0.08) 24%, rgba(6, 8, 10, 0.24) 44%, rgba(6, 8, 10, 0.44) 68%, rgba(6, 8, 10, 0.54) 100%);
+    radial-gradient(940px 580px at 52% 42%, rgba(6, 8, 10, 0.02) 0%, rgba(6, 8, 10, 0.08) 24%, rgba(6, 8, 10, 0.22) 44%, rgba(6, 8, 10, 0.40) 68%, rgba(6, 8, 10, 0.50) 100%);
 }
 
 /* Reset */

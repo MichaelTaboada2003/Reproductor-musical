@@ -792,6 +792,11 @@ function drawVisualizer(frameAt = performance.now()) {
   const t = now / 1000;
   const motionScale = reduceMotionQuery.matches ? 0.42 : 1;
 
+  // Cada frame debe partir de transparencia. Sin este clear, el velo oscuro
+  // de la escena se acumula sobre el canvas y puede acabar revelándose como
+  // un rectángulo negro detrás de la interfaz.
+  ctx.clearRect(0, 0, w, h);
+
   let bass = 0;
   let mid = 0;
   let high = 0;
