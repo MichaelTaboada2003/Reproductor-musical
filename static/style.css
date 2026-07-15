@@ -1486,11 +1486,18 @@ body.ambient-low-power .np-lyrics::before {
 
 .metadata-field input:focus { outline: 0; }
 .metadata-field input::placeholder { color: var(--text-faint); font-family: var(--font); font-weight: 500; }
+
+.metadata-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-top: 18px;
 }
 
 #metadataSaveBtn {
   min-height: 36px;
-  margin: 10px 8px 0 0;
+  margin: 0;
   padding: 0 12px;
   font-size: 0.78rem;
 }
